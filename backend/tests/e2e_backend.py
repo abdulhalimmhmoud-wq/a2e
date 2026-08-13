@@ -20,6 +20,11 @@ from app.tools.translator.formats.base import strip_tags  # noqa: E402
 
 SAMPLE = Path("storage/samples/contract_ar.docx")
 
+# مجال معزول للاختبار. الاختبار بيحاكي تعديلات بشرية، والتعديل البشري
+# بيتخزّن في ذاكرة الترجمة بحق — فلو استخدمنا مجالًا حقيقيًا، النصوص
+# الوهمية هتترجع كمطابقات تامة في الترجمات الحقيقية بعد كده.
+TEST_DOMAIN = "__test__"
+
 
 def main() -> int:
     failures: list[str] = []
@@ -31,7 +36,7 @@ def main() -> int:
         # ---------- 1) مشروع + رفع ----------
         project = Project(
             name="اختبار شامل — عقد استشارات",
-            domain="legal",
+            domain=TEST_DOMAIN,
             model="claude-sonnet-5",
         )
         db.add(project)
@@ -97,7 +102,7 @@ def main() -> int:
 
         echo_segment = translatable[0]
         db.refresh(echo_segment)
-        leaked = tm.lookup_exact(db, echo_segment.source_text, "ar", "en", "legal")
+        leaked = tm.lookup_exact(db, echo_segment.source_text, "ar", "en", TEST_DOMAIN)
         print(f"  مخرجات تجريبية دخلت الذاكرة: {'نعم' if leaked else 'لا'}")
         if leaked is not None:
             failures.append(
@@ -115,7 +120,7 @@ def main() -> int:
         pipeline.approve_segment(db, human_segment)
         db.commit()
 
-        stored = tm.lookup_exact(db, human_segment.source_text, "ar", "en", "legal")
+        stored = tm.lookup_exact(db, human_segment.source_text, "ar", "en", TEST_DOMAIN)
         print(f"  تعديل بشري اتخزّن في الذاكرة: {'نعم' if stored else 'لا'}")
         if stored is None:
             failures.append("التعديل البشري ماتخزّنش في ذاكرة الترجمة")
@@ -207,6 +212,13 @@ def main() -> int:
         if project is not None:
             db.query(Project).filter(Project.id == project.id).delete()
             db.commit()
+        # مدخلات الاختبار ماتفضلش في الذاكرة بعد التشغيل
+        from app.models import TMEntry
+
+        removed = db.query(TMEntry).filter(TMEntry.domain == TEST_DOMAIN).delete()
+        db.commit()
+        if removed:
+            print(f"\n  اتنظّف {removed} مدخل اختباري من الذاكرة")
         db.close()
 
     print("\n" + "=" * 62)
