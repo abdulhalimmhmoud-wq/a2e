@@ -1,0 +1,145 @@
+"""معالج PDF — التحويل إلى Word ثم المعالجة كمستند Word.
+
+القرار المعتمَد: المخرج النهائي ملف Word قابل للتعديل. يعني الـ PDF
+بيتحوّل لـ DOCX بدري في الخط، وبعد كده بيستخدم **نفس** محرّك الاستخراج
+والدمج بتاع Word — مش مسار منفصل. ده بيقلل السطح التقني بشكل كبير
+وبيخلي أي تحسين في معالج Word يستفيد منه الـ PDF تلقائيًا.
+
+الـ PDF الممسوح ضوئيًا (صور بدون طبقة نص) بيتكشف هنا ويتعلّم عليه
+عشان الخط يوجّهه لمسار الـ OCR بدل ما يطلع ملف فاضي.
+"""
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from pathlib import Path
+
+import fitz  # PyMuPDF
+
+logger = logging.getLogger(__name__)
+
+# أقل عدد حروف في الصفحة يعتبرها "فيها نص" — تحت كده غالبًا صورة ممسوحة
+_TEXT_THRESHOLD_PER_PAGE = 40
+
+
+@dataclass
+class PdfDiagnosis:
+    page_count: int
+    char_count: int
+    is_scanned: bool
+    has_text_layer: bool
+    pages_without_text: list[int]
+
+    @property
+    def needs_ocr(self) -> bool:
+        return self.is_scanned
+
+
+def diagnose(path: Path) -> PdfDiagnosis:
+    """فحص الملف قبل التحويل: فيه طبقة نص ولا محتاج OCR؟"""
+    total_chars = 0
+    empty_pages: list[int] = []
+
+    with fitz.open(str(path)) as document:
+        page_count = document.page_count
+        for index, page in enumerate(document, start=1):
+            text = page.get_text().strip()
+            total_chars += len(text)
+            if len(text) < _TEXT_THRESHOLD_PER_PAGE:
+                empty_pages.append(index)
+
+    has_text = total_chars > 0
+    # لو أغلب الصفحات مافيهاش نص → الملف ممسوح ضوئيًا
+    is_scanned = page_count > 0 and len(empty_pages) > page_count * 0.6
+
+    return PdfDiagnosis(
+        page_count=page_count,
+        char_count=total_chars,
+        is_scanned=is_scanned,
+        has_text_layer=has_text,
+        pages_without_text=empty_pages,
+    )
+
+
+_patched = False
+
+
+def _patch_pdf2docx_colors() -> None:
+    """رقعة توافق بين PyMuPDF 1.25+ و pdf2docx 0.5.8.
+
+    المشكلة: PyMuPDF الحديث بيرجّع ألوان النص كأعداد صحيحة **سالبة**
+    (الأسود = -16777216، وهو 0xFF000000 بامتداد إشارة بايت الشفافية).
+    و pdf2docx بيحوّلها بـ `hex(srgb)[2:]` اللي بيدّي 'x1000000' للأرقام
+    السالبة بدل '1000000'، وبعدين `int(..., 16)` بيقع.
+
+    النتيجة بدون الرقعة: **كل صفحة فيها نص أسود بتتساقط بالكامل** —
+    يعني مسار الـ PDF كله معطّل عمليًا.
+
+    الإصلاح: قناع 24 بت. قيم sRGB أصلًا 24 بت، وبايت الشفافية اللي
+    بيسبّب السالب مالوش لازمة هنا — فالقناع بيرجّع القيمة الصحيحة.
+    """
+    global _patched
+    if _patched:
+        return
+
+    from pdf2docx.common import share
+    from pdf2docx.text import TextSpan
+
+    original = share.rgb_component
+
+    def safe_rgb_component(srgb: int):
+        return original(srgb & 0xFFFFFF)
+
+    share.rgb_component = safe_rgb_component
+    # TextSpan عامل import مباشر للدالة، فلازم نستبدلها عنده كمان
+    TextSpan.rgb_component = safe_rgb_component
+    _patched = True
+    logger.debug("تم تفعيل رقعة توافق ألوان pdf2docx")
+
+
+def convert_to_docx(source: Path, output: Path) -> Path:
+    """تحويل PDF إلى DOCX مع الحفاظ على التخطيط قدر الإمكان."""
+    _patch_pdf2docx_colors()
+    from pdf2docx import Converter
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    # pdf2docx بيطبع لوجات كتير — بنكتمها عشان تفضل مخرجاتنا نظيفة
+    for name in ("pdf2docx", "fitz"):
+        logging.getLogger(name).setLevel(logging.ERROR)
+
+    converter = Converter(str(source))
+    try:
+        converter.convert(str(output))
+    finally:
+        converter.close()
+
+    if not output.exists():
+        raise RuntimeError("فشل تحويل الـ PDF إلى Word")
+    return output
+
+
+def prepare(source: Path, work_dir: Path) -> tuple[Path, str, dict]:
+    """تجهيز الـ PDF للمعالجة.
+
+    بيرجّع: (مسار ملف العمل، صيغة العمل، بيانات التشخيص)
+    """
+    info = diagnose(source)
+    meta = {
+        "original_format": "pdf",
+        "page_count": info.page_count,
+        "has_text_layer": info.has_text_layer,
+        "is_scanned": info.is_scanned,
+        "pages_without_text": info.pages_without_text[:20],
+    }
+
+    if info.is_scanned:
+        # مفيش نص نستخرجه — لازم OCR الأول
+        meta["needs_ocr"] = True
+        return source, "pdf", meta
+
+    target = work_dir / f"{source.stem}.converted.docx"
+    convert_to_docx(source, target)
+    meta["needs_ocr"] = False
+    meta["converted_to"] = str(target)
+    return target, "docx", meta

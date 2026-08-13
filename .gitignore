@@ -1,0 +1,24 @@
+# الأسرار — لا تُرفع أبدًا
+.env
+
+# بيئة بايثون
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# الملفات والبيانات المحلية
+storage/
+*.db
+*.db-wal
+*.db-shm
+
+# الواجهة
+node_modules/
+frontend/dist/
+
+# أدوات المحرر ونظام التشغيل
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
