@@ -22,3 +22,6 @@ frontend/dist/
 .idea/
 .DS_Store
 Thumbs.db
+
+# مخلّفات بناء TypeScript
+*.tsbuildinfo
