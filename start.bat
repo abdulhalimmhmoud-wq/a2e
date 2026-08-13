@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title Shaltot Suite
+title Tarjuman al-Ahibba
 cd /d "%~dp0"
 
 if not exist ".venv\Scripts\python.exe" (
@@ -27,7 +27,7 @@ if not exist ".env" (
 )
 
 echo.
-echo   Shaltot Suite
+echo   Tarjuman al-Ahibba
 echo   http://127.0.0.1:8756
 echo   اضغط Ctrl+C للإيقاف
 echo.

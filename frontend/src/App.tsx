@@ -10,7 +10,7 @@ export default function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          شلتوت<span>.</span>
+          ترجمان <span>الأحبة</span>
         </div>
         <NavLink to="/" end className="nav-link">
           الأدوات

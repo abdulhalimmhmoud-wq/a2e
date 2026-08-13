@@ -20,7 +20,7 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-7s  %(name)s  %(message)s",
     datefmt="%H:%M:%S",
 )
-logger = logging.getLogger("shaltot")
+logger = logging.getLogger("tarjuman")
 
 FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 

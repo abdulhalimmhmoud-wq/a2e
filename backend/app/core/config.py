@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# جذر المشروع: .../Shaltot
+# جذر المشروع (المجلد اللي فيه backend و frontend)
 BASE_DIR = Path(__file__).resolve().parents[3]
 
 
@@ -17,7 +17,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "Shaltot Suite"
+    app_name: str = "ترجمان الأحبة"
     debug: bool = True
 
     # مفتاح Anthropic — يُقرأ من .env ولا يُخزَّن في قاعدة البيانات أبدًا
@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     # المسارات
     storage_dir: Path = BASE_DIR / "storage"
-    db_path: Path = BASE_DIR / "storage" / "shaltot.db"
+    db_path: Path = BASE_DIR / "storage" / "tarjuman.db"
 
     # حدود الرفع
     max_upload_mb: int = 200
