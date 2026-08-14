@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, type PropagationPlan, type Segment } from "../api";
+import { useI18n } from "../i18n";
 
 interface Props {
   source: Segment;
@@ -15,6 +16,7 @@ interface Props {
  * حسب السياق، فالتطبيق الأعمى على المستند كله يفسد أكثر مما يصلح.
  */
 export default function PropagationDialog({ source, plan, onClose, onApplied }: Props) {
+  const { t } = useI18n();
   const [selected, setSelected] = useState<Set<string>>(
     // المطابقات التامة مختارة مبدئيًا، ومطابقات المصطلح لا
     new Set(plan.needs_review.filter((t) => t.match_type === "exact").map((t) => t.segment_id))
@@ -46,19 +48,18 @@ export default function PropagationDialog({ source, plan, onClose, onApplied }: 
     }
   };
 
-  const exact = plan.needs_review.filter((t) => t.match_type === "exact");
-  const terms = plan.needs_review.filter((t) => t.match_type === "term");
+  const exact = plan.needs_review.filter((item) => item.match_type === "exact");
+  const terms = plan.needs_review.filter((item) => item.match_type === "term");
 
   return (
     <div className="dialog-backdrop" onClick={onClose}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
         <header>
-          <strong style={{ fontSize: 16 }}>تطبيق التعديل على مواضع أخرى</strong>
+          <strong style={{ fontSize: 16 }}>{t("prop.title")}</strong>
           <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
-            {plan.auto_applied > 0 && (
-              <>طُبّق تلقائيًا على {plan.auto_applied} مقطع مطابق تمامًا. </>
-            )}
-            المواضع التالية تحتاج موافقتك لأن السياق قد يختلف.
+            {plan.auto_applied > 0 &&
+              t("prop.autoApplied", { n: plan.auto_applied })}
+            {t("prop.needsApproval")}
           </div>
         </header>
 
@@ -66,9 +67,9 @@ export default function PropagationDialog({ source, plan, onClose, onApplied }: 
           {exact.length > 0 && (
             <>
               <div className="row" style={{ marginTop: 12 }}>
-                <span className="badge accent">مطابقة تامة</span>
+                <span className="badge accent">{t("prop.exactMatch")}</span>
                 <span className="muted" style={{ fontSize: 12.5 }}>
-                  نفس النص المصدر، لكن مُعدَّل يدويًا من قبل
+                  {t("prop.exactMatchHint")}
                 </span>
               </div>
               {exact.map((target) => (
@@ -94,9 +95,9 @@ export default function PropagationDialog({ source, plan, onClose, onApplied }: 
           {terms.length > 0 && (
             <>
               <div className="row" style={{ marginTop: 18 }}>
-                <span className="badge warn">على مستوى المصطلح</span>
+                <span className="badge warn">{t("prop.termLevel")}</span>
                 <span className="muted" style={{ fontSize: 12.5 }}>
-                  المصطلح نفسه يظهر في مقاطع أخرى — راجع كل موضع
+                  {t("prop.termLevelHint")}
                 </span>
               </div>
               {terms.map((target) => (
@@ -120,28 +121,28 @@ export default function PropagationDialog({ source, plan, onClose, onApplied }: 
           )}
 
           {plan.needs_review.length === 0 && (
-            <div className="empty">لا توجد مواضع أخرى تحتاج مراجعة.</div>
+            <div className="empty">{t("prop.none")}</div>
           )}
         </div>
 
         <footer>
           <button className="btn primary" onClick={apply} disabled={busy || !selected.size}>
-            تطبيق على {selected.size} موضع
+            {t("prop.apply", { n: selected.size })}
           </button>
           <button className="btn" onClick={onClose}>
-            تخطّي
+            {t("prop.skip")}
           </button>
           <div className="spacer" />
           <button
             className="btn sm"
             onClick={() =>
-              setSelected(new Set(plan.needs_review.map((t) => t.segment_id)))
+              setSelected(new Set(plan.needs_review.map((item) => item.segment_id)))
             }
           >
-            تحديد الكل
+            {t("prop.selectAll")}
           </button>
           <button className="btn sm" onClick={() => setSelected(new Set())}>
-            إلغاء التحديد
+            {t("prop.selectNone")}
           </button>
         </footer>
       </div>

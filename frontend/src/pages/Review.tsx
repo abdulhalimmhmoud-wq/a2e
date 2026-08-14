@@ -9,38 +9,12 @@ import {
   type SourceFile,
 } from "../api";
 import PropagationDialog from "../components/PropagationDialog";
-
-const FLAG_LABEL: Record<string, string> = {
-  empty: "فارغ",
-  numbers_mismatch: "أرقام غير مطابقة",
-  untranslated: "غير مترجم",
-  wrong_script: "كتابة غير متوقعة",
-  too_short: "قصير بشكل غير معتاد",
-  too_long: "طويل بشكل غير معتاد",
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  draft: "مسودّة",
-  translated: "مترجَم",
-  reviewed: "مُراجَع",
-  approved: "معتمَد",
-};
-
-const LANG_LABEL: Record<string, string> = {
-  ar: "عربي",
-  en: "إنجليزي",
-  fr: "فرنسي",
-  de: "ألماني",
-  es: "إسباني",
-  tr: "تركي",
-};
-
-const ORIGIN_LABEL: Record<string, string> = {
-  engine: "المحرّك",
-  tm_exact: "الذاكرة",
-  human: "تعديل يدوي",
-  propagated: "انتشار",
-};
+import {
+  LANGUAGE_NAMES,
+  localName,
+  useI18n,
+  type StringKey,
+} from "../i18n";
 
 /** إبراز وسوم التنسيق حتى لا يحذفها المراجع بالخطأ. */
 function renderWithTags(text: string) {
@@ -56,17 +30,9 @@ function renderWithTags(text: string) {
   );
 }
 
-function flagLabel(flag: string) {
-  if (flag.startsWith("tags_missing:")) return `وسم تنسيق ناقص (${flag.split(":")[1]})`;
-  if (flag.startsWith("tags_extra:")) return `وسم تنسيق زائد (${flag.split(":")[1]})`;
-  if (flag.startsWith("glossary:")) return `مخالفة مصطلح: ${flag.slice(9)}`;
-  if (flag.startsWith("ambiguous_separator:"))
-    return `فاصل رقمي ملتبس (${flag.slice(20)}) — راجع المعنى`;
-  return FLAG_LABEL[flag] ?? flag;
-}
-
 export default function Review() {
   const { projectId = "", fileId = "" } = useParams();
+  const { t, lang } = useI18n();
   const [file, setFile] = useState<SourceFile | null>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
@@ -80,6 +46,19 @@ export default function Review() {
     Record<string, { source_text: string; target_text: string; score: number }[]>
   >({});
   const drafts = useRef<Record<string, string>>({});
+
+  /** ترجمة علم الجودة — بعضها يحمل تفاصيل بعد النقطتين. */
+  const flagLabel = (flag: string) => {
+    if (flag.startsWith("tags_missing:"))
+      return t("flag.tagsMissing", { tag: flag.split(":")[1] });
+    if (flag.startsWith("tags_extra:"))
+      return t("flag.tagsExtra", { tag: flag.split(":")[1] });
+    if (flag.startsWith("glossary:"))
+      return t("flag.glossary", { detail: flag.slice(9) });
+    if (flag.startsWith("ambiguous_separator:"))
+      return t("flag.ambiguousSeparator", { value: flag.slice(20) });
+    return t(`flag.${flag}` as StringKey);
+  };
 
   /** مطابقات تقريبية من الذاكرة — بتتجاب عند التركيز على المقطع فقط،
    *  عشان مانحمّلش الذاكرة كلها لكل مقطع في الصفحة. */
@@ -117,16 +96,22 @@ export default function Review() {
     api.getProject(projectId).then(setProject).catch(() => undefined);
   }, [fileId, projectId]);
 
-  // اتجاه كل عمود بيتبع لغته: عربي→إنجليزي يعرض المصدر RTL والهدف LTR،
-  // وإنجليزي→عربي بيعكسهم. من غير ده الترجمة العربية هتظهر مقلوبة.
-  const sourceDir = isRtl(project?.source_lang ?? "ar") ? "rtl" : "ltr";
-  const targetDir = isRtl(project?.target_lang ?? "en") ? "rtl" : "ltr";
-  const sourceStyle = { direction: sourceDir, textAlign: sourceDir === "rtl" ? "right" : "left" } as const;
-  const targetStyle = { direction: targetDir, textAlign: targetDir === "rtl" ? "right" : "left" } as const;
-
   useEffect(() => {
     load(0);
   }, [load]);
+
+  // اتجاه كل عمود بيتبع **لغته**، مش لغة الواجهة. عربي→إنجليزي يعرض
+  // المصدر RTL والهدف LTR مهما كانت لغة الواجهة.
+  const sourceDir = isRtl(project?.source_lang ?? "ar") ? "rtl" : "ltr";
+  const targetDir = isRtl(project?.target_lang ?? "en") ? "rtl" : "ltr";
+  const sourceStyle = {
+    direction: sourceDir,
+    textAlign: sourceDir === "rtl" ? "right" : "left",
+  } as const;
+  const targetStyle = {
+    direction: targetDir,
+    textAlign: targetDir === "rtl" ? "right" : "left",
+  } as const;
 
   const save = async (segment: Segment, text: string, alsoApprove = false) => {
     if (text === segment.target_text && !alsoApprove) return;
@@ -137,15 +122,13 @@ export default function Review() {
         plan_propagation: true,
       });
 
-      setSegments((prev) =>
-        prev.map((s) => (s.id === segment.id ? result.segment : s))
-      );
+      setSegments((prev) => prev.map((s) => (s.id === segment.id ? result.segment : s)));
       delete drafts.current[segment.id];
 
       const propagation = result.propagation;
       if (propagation) {
         if (propagation.auto_applied > 0) {
-          setToast(`طُبّق التعديل تلقائيًا على ${propagation.auto_applied} مقطع مطابق`);
+          setToast(t("review.autoPropagated", { n: propagation.auto_applied }));
           setTimeout(() => setToast(""), 4000);
           load(0);
         }
@@ -160,34 +143,37 @@ export default function Review() {
 
   const approveAll = async () => {
     const result = await api.approveAll(fileId);
-    setToast(`اعتُمد ${result.approved} مقطع وحُفظ في ذاكرة الترجمة`);
+    setToast(t("review.approvedToast", { n: result.approved }));
     setTimeout(() => setToast(""), 4000);
     load(0);
   };
 
   const stats = file?.progress;
+  const sourceName = localName(LANGUAGE_NAMES, project?.source_lang ?? "ar", lang);
+  const targetName = localName(LANGUAGE_NAMES, project?.target_lang ?? "en", lang);
 
   return (
     <>
       <div className="page-head">
         <div>
-          <h1>{file?.original_filename ?? "مراجعة"}</h1>
+          <h1>{file?.original_filename ?? t("review.title")}</h1>
           <p className="sub">
-            <Link to={`/translator/${projectId}`}>رجوع للمشروع</Link>
+            <Link to={`/translator/${projectId}`}>{t("review.back")}</Link>
             {stats && (
               <>
-                {" "}· {stats.total} مقطع · {stats.approved} معتمَد
-                {stats.flagged > 0 && ` · ${stats.flagged} تنبيه`}
+                {" "}· {stats.total} {t("common.segments")} · {stats.approved}{" "}
+                {t("status.approved")}
+                {stats.flagged > 0 && ` · ${stats.flagged} ${t("project.alerts")}`}
               </>
             )}
           </p>
         </div>
         <div className="row">
           <button className="btn" onClick={approveAll}>
-            اعتماد الكل
+            {t("review.approveAll")}
           </button>
           <a className="btn primary" href={api.downloadUrl(fileId)}>
-            تصدير الملف
+            {t("review.export")}
           </a>
         </div>
       </div>
@@ -206,39 +192,43 @@ export default function Review() {
             value={filters.status}
             onChange={(e) => setFilters({ ...filters, status: e.target.value })}
           >
-            <option value="">كل الحالات</option>
-            <option value="draft">مسودّة</option>
-            <option value="translated">مترجَم</option>
-            <option value="approved">معتمَد</option>
+            <option value="">{t("review.allStatuses")}</option>
+            <option value="draft">{t("status.draft")}</option>
+            <option value="translated">{t("status.translated")}</option>
+            <option value="approved">{t("status.approved")}</option>
           </select>
 
           <button
             className={`btn sm ${filters.flagged ? "primary" : ""}`}
             onClick={() => setFilters({ ...filters, flagged: !filters.flagged })}
           >
-            التنبيهات فقط
+            {t("review.flaggedOnly")}
           </button>
 
           <input
             style={{ width: 260 }}
-            placeholder="بحث في المصدر أو الترجمة…"
+            placeholder={t("review.searchPlaceholder")}
             value={filters.search}
             onChange={(e) => setFilters({ ...filters, search: e.target.value })}
           />
 
           <div className="spacer" />
           <span className="muted" style={{ fontSize: 12.5 }}>
-            عرض {segments.length} من {total} · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> للاعتماد
-            والانتقال
+            {t("review.showing", { shown: segments.length, total })} ·{" "}
+            <kbd>Ctrl</kbd>+<kbd>Enter</kbd> {t("review.shortcut")}
           </span>
         </div>
       </div>
 
       <div className="seg-head">
         <div>#</div>
-        <div>المصدر ({LANG_LABEL[project?.source_lang ?? "ar"] ?? project?.source_lang})</div>
-        <div>الترجمة ({LANG_LABEL[project?.target_lang ?? "en"] ?? project?.target_lang})</div>
-        <div>الحالة</div>
+        <div>
+          {t("review.colSource")} ({sourceName})
+        </div>
+        <div>
+          {t("review.colTarget")} ({targetName})
+        </div>
+        <div>{t("review.colStatus")}</div>
       </div>
 
       {segments.map((segment, index) => {
@@ -285,13 +275,13 @@ export default function Review() {
                 />
               ) : (
                 <span className="muted" style={{ fontSize: 12.5 }}>
-                  غير قابل للترجمة — يمرّ كما هو
+                  {t("review.notTranslatable")}
                 </span>
               )}
 
               {active === segment.id && suggestions[segment.id]?.length > 0 && (
                 <div className="suggestions">
-                  <div className="loc">من ذاكرة الترجمة — اضغط للاستخدام</div>
+                  <div className="loc">{t("review.suggestionsTitle")}</div>
                   {suggestions[segment.id].map((match, i) => (
                     <button
                       key={i}
@@ -302,7 +292,7 @@ export default function Review() {
                         drafts.current[segment.id] = match.target_text;
                         save(segment, match.target_text);
                       }}
-                      title={`المصدر المشابه: ${match.source_text}`}
+                      title={`${t("review.similarSource")}: ${match.source_text}`}
                     >
                       <span className="badge accent">{match.score}%</span>
                       <span>{match.target_text}</span>
@@ -322,14 +312,14 @@ export default function Review() {
                     : "accent"
                 }`}
               >
-                {STATUS_LABEL[segment.status] ?? segment.status}
+                {t(`status.${segment.status}` as StringKey)}
               </span>
               {segment.origin && (
-                <span className="loc">{ORIGIN_LABEL[segment.origin] ?? segment.origin}</span>
+                <span className="loc">{t(`origin.${segment.origin}` as StringKey)}</span>
               )}
               {segment.qa_flags.map((flag) => (
                 <span key={flag} className="badge warn" title={flagLabel(flag)}>
-                  {flagLabel(flag).slice(0, 26)}
+                  {flagLabel(flag).slice(0, 30)}
                 </span>
               ))}
             </div>
@@ -340,7 +330,7 @@ export default function Review() {
       {segments.length < total && (
         <div style={{ padding: 18, textAlign: "center" }}>
           <button className="btn" onClick={() => load(segments.length)}>
-            تحميل المزيد ({total - segments.length} متبقٍ)
+            {t("review.loadMore", { n: total - segments.length })}
           </button>
         </div>
       )}
@@ -352,7 +342,7 @@ export default function Review() {
           onClose={() => setPlan(null)}
           onApplied={(count) => {
             setPlan(null);
-            setToast(`طُبّق التعديل على ${count} مقطع`);
+            setToast(t("review.propagated", { n: count }));
             setTimeout(() => setToast(""), 4000);
             load(0);
           }}

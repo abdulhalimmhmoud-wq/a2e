@@ -13,12 +13,14 @@ RTL_LANGUAGES = {"ar", "he", "fa", "ur", "ps", "sd", "yi"}
 LANGUAGE_NAMES = {
     "ar": "Arabic",
     "en": "English",
+    "ru": "Russian",
+    "tr": "Turkish",
+    "uk": "Ukrainian",
+    "az": "Azerbaijani",
     "fr": "French",
     "de": "German",
     "es": "Spanish",
     "it": "Italian",
-    "tr": "Turkish",
-    "ru": "Russian",
     "zh": "Chinese",
     "fa": "Persian",
     "he": "Hebrew",
@@ -28,12 +30,14 @@ LANGUAGE_NAMES = {
 LANGUAGE_LABELS_AR = {
     "ar": "العربية",
     "en": "الإنجليزية",
+    "ru": "الروسية",
+    "tr": "التركية",
+    "uk": "الأوكرانية",
+    "az": "الأذربيجانية",
     "fr": "الفرنسية",
     "de": "الألمانية",
     "es": "الإسبانية",
     "it": "الإيطالية",
-    "tr": "التركية",
-    "ru": "الروسية",
     "zh": "الصينية",
     "fa": "الفارسية",
     "he": "العبرية",
@@ -48,14 +52,18 @@ TOKENS_PER_CHAR = {
     "fa": 0.42,
     "ur": 0.42,
     "he": 0.40,
+    # الكيريلية أكثف من اللاتينية لأن محارفها أقل تمثيلًا في المُرمِّز
     "ru": 0.35,
+    "uk": 0.36,
     "zh": 0.70,
     "en": 0.25,
     "fr": 0.28,
     "de": 0.30,
     "es": 0.28,
     "it": 0.28,
+    # اللغات الإلصاقية بتبني كلمات طويلة بلواحق كتير
     "tr": 0.32,
+    "az": 0.33,
 }
 
 # نطاقات المحارف لتحديد كتابة النص
@@ -72,10 +80,13 @@ _SCRIPT_RANGES = {
 LANGUAGE_SCRIPT = {
     "ar": "arabic", "fa": "arabic", "ur": "arabic",
     "he": "hebrew",
-    "ru": "cyrillic",
+    "ru": "cyrillic", "uk": "cyrillic",
     "zh": "cjk",
     "en": "latin", "fr": "latin", "de": "latin",
     "es": "latin", "it": "latin", "tr": "latin",
+    # الأذربيجانية بتتكتب لاتيني في أذربيجان منذ 1991
+    # (لسه كيريلية في داغستان — لو احتجناها نضيف متغيّر منفصل)
+    "az": "latin",
 }
 
 _WORD_RE = re.compile(r"[^\W\d_]", re.UNICODE)
@@ -139,8 +150,9 @@ def direction_attrs(lang: str) -> dict:
         "pptx_rtl": "1" if rtl else "0",
         "pptx_align": "r" if rtl else "l",
         # Word: w:lang@val
-        "lang_tag": {"ar": "ar-SA", "en": "en-US", "fr": "fr-FR",
-                     "de": "de-DE", "es": "es-ES"}.get(
-            lang.split("-")[0].lower(), "en-US"
-        ),
+        "lang_tag": {
+            "ar": "ar-SA", "en": "en-US", "ru": "ru-RU", "tr": "tr-TR",
+            "uk": "uk-UA", "az": "az-Latn-AZ", "fr": "fr-FR",
+            "de": "de-DE", "es": "es-ES", "it": "it-IT",
+        }.get(lang.split("-")[0].lower(), "en-US"),
     }

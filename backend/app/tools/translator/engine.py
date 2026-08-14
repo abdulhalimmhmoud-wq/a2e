@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -472,6 +473,16 @@ class EchoEngine:
 # ---------------------------------------------------------------------------
 # فحص سلامة الترجمة قبل قبولها
 # ---------------------------------------------------------------------------
+# رقم بمجموعات آلاف بأي فاصل شائع (فاصلة، نقطة، مسافة عادية أو غير
+# فاصلة)، مع كسر عشري اختياري. الترتيب مهم: النمط المجمَّع الأول عشان
+# مايتقطّعش الرقم لأجزاء.
+_NUMBER_RE = re.compile(
+    r"\d{1,3}(?:[.,   ]\d{3})+(?:[.,]\d+)?"  # 150,000 / 150.000 / 150 000
+    r"|\d+[.,]\d+"                                      # 3.14
+    r"|\d+"                                             # 30
+)
+
+
 def validate_translation(
     source: str,
     target: str,
@@ -499,15 +510,25 @@ def validate_translation(
         if extra:
             problems.append(f"tags_extra:{','.join(sorted(extra))}")
 
-    # الأرقام لازم تتطابق — أخطر خطأ في العقود
-    import re
-
+    # الأرقام على مستويين: الأرقام نفسها، والاصطلاح اللي اتكتبت بيه.
+    # تغيير الأرقام كارثة؛ تغيير الفاصل قرار تحريري محتاج مراجعة.
     plain_source = strip_tags(source)
-    source_numbers = re.findall(r"\d[\d,._]*", plain_source)
-    target_numbers = re.findall(r"\d[\d,._]*", strip_tags(target))
-    normalize = lambda values: sorted(v.strip(".,_") for v in values)  # noqa: E731
-    if normalize(source_numbers) != normalize(target_numbers):
+    plain_target = strip_tags(target)
+
+    source_numbers = _NUMBER_RE.findall(plain_source)
+    target_numbers = _NUMBER_RE.findall(plain_target)
+
+    def digits(values: list[str]) -> list[str]:
+        return sorted(re.sub(r"\D", "", v) for v in values)
+
+    if digits(source_numbers) != digits(target_numbers):
+        # رقم اتغيّر أو ضاع — أخطر خطأ ممكن في عقد
         problems.append("numbers_mismatch")
+    elif sorted(source_numbers) != sorted(target_numbers):
+        # نفس الأرقام بفواصل مختلفة: 150,000 بقت 150.000 أو 150 000.
+        # ده صحيح لغويًا في لغة الهدف لكنه بيغيّر شكل المستند، فبنرفعه
+        # للمراجع بدل ما نقرر بدله.
+        problems.append("separator_changed")
 
     # فاصل الآلاف الملتبس: "150.000" في العربية = مئة وخمسون ألفًا،
     # وفي الإنجليزية تُقرأ 150 فاصلة صفر. الأرقام متطابقة حرفيًا فالفحص

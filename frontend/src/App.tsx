@@ -4,23 +4,39 @@ import Projects from "./pages/Projects";
 import ProjectDetail from "./pages/ProjectDetail";
 import Review from "./pages/Review";
 import Glossary from "./pages/Glossary";
+import { useI18n } from "./i18n";
 
 export default function App() {
+  const { t, toggle, lang } = useI18n();
+
   return (
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          ترجمان <span>الأحبة</span>
+          {t("app.brandA")} <span>{t("app.brandB")}</span>
         </div>
         <NavLink to="/" end className="nav-link">
-          الأدوات
+          {t("nav.tools")}
         </NavLink>
         <NavLink to="/translator" className="nav-link">
-          المترجم
+          {t("nav.translator")}
         </NavLink>
         <NavLink to="/glossary" className="nav-link">
-          المصطلحات
+          {t("nav.glossary")}
         </NavLink>
+
+        <div className="spacer" />
+        {/* لغة الواجهة — منفصلة تمامًا عن لغتَي الترجمة */}
+        <button
+          className="btn lang-toggle"
+          onClick={toggle}
+          title={t("lang.switchTitle")}
+          aria-label={t("lang.switchTitle")}
+        >
+          <span aria-hidden>🌐</span>
+          <span>{t("lang.switch")}</span>
+          <span className="badge">{lang.toUpperCase()}</span>
+        </button>
       </aside>
 
       <main className="main">

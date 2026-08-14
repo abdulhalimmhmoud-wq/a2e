@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type AppConfig, type Project } from "../api";
+import { DOMAIN_NAMES, LANGUAGE_NAMES, localName, useI18n } from "../i18n";
 
 export default function Projects() {
+  const { t, lang } = useI18n();
   const [projects, setProjects] = useState<Project[]>([]);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [error, setError] = useState("");
@@ -17,9 +19,6 @@ export default function Projects() {
     style_notes: "",
   });
 
-  const swapLanguages = () =>
-    setForm({ ...form, source_lang: form.target_lang, target_lang: form.source_lang });
-
   const load = () => api.listProjects().then(setProjects).catch((e) => setError(e.message));
 
   useEffect(() => {
@@ -27,7 +26,10 @@ export default function Projects() {
     api.config().then(setConfig).catch(() => undefined);
   }, []);
 
-  // المجال القانوني يستحق موديلًا أقوى — نقترحه تلقائيًا
+  const swapLanguages = () =>
+    setForm({ ...form, source_lang: form.target_lang, target_lang: form.source_lang });
+
+  // المجال القانوني والطبي يستحقان موديلًا أقوى — نقترحه تلقائيًا
   const onDomainChange = (domain: string) => {
     const suggested =
       domain === "legal" || domain === "medical"
@@ -53,11 +55,11 @@ export default function Projects() {
     <>
       <div className="page-head">
         <div>
-          <h1>المترجم</h1>
-          <p className="sub">ترجمة المستندات مع الحفاظ الكامل على التنسيق</p>
+          <h1>{t("projects.title")}</h1>
+          <p className="sub">{t("projects.subtitle")}</p>
         </div>
         <button className="btn primary" onClick={() => setCreating((v) => !v)}>
-          {creating ? "إلغاء" : "مشروع جديد"}
+          {creating ? t("common.cancel") : t("projects.new")}
         </button>
       </div>
 
@@ -66,25 +68,25 @@ export default function Projects() {
       {creating && (
         <div className="card" style={{ marginBottom: 18 }}>
           <div className="field">
-            <label>اسم المشروع</label>
+            <label>{t("projects.name")}</label>
             <input
               autoFocus
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="مثال: عقود الربع الثالث"
+              placeholder={t("projects.namePlaceholder")}
             />
           </div>
 
           <div className="row" style={{ alignItems: "flex-end" }}>
             <div className="field" style={{ flex: 1, minWidth: 130 }}>
-              <label>لغة المصدر</label>
+              <label>{t("projects.sourceLang")}</label>
               <select
                 value={form.source_lang}
                 onChange={(e) => setForm({ ...form, source_lang: e.target.value })}
               >
                 {config?.languages.map((l) => (
                   <option key={l.id} value={l.id} disabled={l.id === form.target_lang}>
-                    {l.label}
+                    {localName(LANGUAGE_NAMES, l.id, lang)}
                   </option>
                 ))}
               </select>
@@ -94,20 +96,20 @@ export default function Projects() {
               className="btn"
               style={{ marginBottom: 14 }}
               onClick={swapLanguages}
-              title="عكس اتجاه الترجمة"
+              title={t("projects.swap")}
             >
               ⇄
             </button>
 
             <div className="field" style={{ flex: 1, minWidth: 130 }}>
-              <label>لغة الهدف</label>
+              <label>{t("projects.targetLang")}</label>
               <select
                 value={form.target_lang}
                 onChange={(e) => setForm({ ...form, target_lang: e.target.value })}
               >
                 {config?.languages.map((l) => (
                   <option key={l.id} value={l.id} disabled={l.id === form.source_lang}>
-                    {l.label}
+                    {localName(LANGUAGE_NAMES, l.id, lang)}
                   </option>
                 ))}
               </select>
@@ -116,11 +118,11 @@ export default function Projects() {
 
           <div className="row" style={{ alignItems: "flex-start" }}>
             <div className="field" style={{ flex: 1, minWidth: 180 }}>
-              <label>المجال</label>
+              <label>{t("projects.domain")}</label>
               <select value={form.domain} onChange={(e) => onDomainChange(e.target.value)}>
                 {config?.domains.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.label}
+                    {localName(DOMAIN_NAMES, d.id, lang)}
                   </option>
                 ))}
               </select>
@@ -128,14 +130,15 @@ export default function Projects() {
 
             {form.engine === "claude" && (
               <div className="field" style={{ flex: 1, minWidth: 180 }}>
-                <label>الموديل</label>
+                <label>{t("projects.model")}</label>
                 <select
                   value={form.model}
                   onChange={(e) => setForm({ ...form, model: e.target.value })}
                 >
                   {config?.models.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.label} — ${m.input_per_mtok}/${m.output_per_mtok} لكل مليون توكن
+                      {m.label} — ${m.input_per_mtok}/${m.output_per_mtok}{" "}
+                      {t("projects.perMillion")}
                     </option>
                   ))}
                 </select>
@@ -144,7 +147,7 @@ export default function Projects() {
           </div>
 
           <div className="field">
-            <label>محرّك الترجمة</label>
+            <label>{t("projects.engine")}</label>
             <div className="row" style={{ gap: 10 }}>
               {config?.engines.map((engine) => (
                 <button
@@ -157,12 +160,12 @@ export default function Projects() {
                   title={
                     engine.available
                       ? engine.note
-                      : `محتاج مفتاح ${engine.label} في ملف .env`
+                      : t("projects.needsKey", { engine: engine.label })
                   }
                 >
                   <span style={{ display: "block" }}>
                     <strong>{engine.label}</strong>
-                    {!engine.available && " (مفيش مفتاح)"}
+                    {!engine.available && ` ${t("projects.noEngineKey")}`}
                   </span>
                 </button>
               ))}
@@ -173,23 +176,23 @@ export default function Projects() {
           </div>
 
           <div className="field">
-            <label>ملاحظات أسلوبية (اختياري)</label>
+            <label>{t("projects.styleNotes")}</label>
             <textarea
               rows={2}
               value={form.style_notes}
               onChange={(e) => setForm({ ...form, style_notes: e.target.value })}
-              placeholder="مثال: استخدم صيغة المخاطب الرسمية، واكتب أسماء الشركات كما هي دون ترجمة"
+              placeholder={t("projects.styleNotesPlaceholder")}
             />
           </div>
 
           <button className="btn primary" onClick={create} disabled={!form.name.trim()}>
-            إنشاء
+            {t("common.create")}
           </button>
         </div>
       )}
 
       {projects.length === 0 ? (
-        <div className="empty">لا توجد مشاريع بعد. ابدأ بإنشاء مشروع جديد.</div>
+        <div className="empty">{t("projects.empty")}</div>
       ) : (
         <div className="grid cols-3">
           {projects.map((project) => (
@@ -202,7 +205,9 @@ export default function Projects() {
               <div className="row" style={{ marginBottom: 10 }}>
                 <strong style={{ fontSize: 15.5 }}>{project.name}</strong>
                 <div className="spacer" />
-                <span className="badge accent">{project.domain}</span>
+                <span className="badge accent">
+                  {localName(DOMAIN_NAMES, project.domain, lang)}
+                </span>
               </div>
               <div className="row muted" style={{ fontSize: 12.5, gap: 14 }}>
                 <span className="mono">
@@ -211,8 +216,9 @@ export default function Projects() {
                 <span className="badge">
                   {project.engine === "deepl" ? "DeepL" : "Claude"}
                 </span>
-                <span>{project.file_count} ملف</span>
-                <span>{project.word_count.toLocaleString("ar-EG")} كلمة</span>
+                <span>
+                  {project.file_count} {t("common.files")}
+                </span>
                 <span>${project.cost_usd.toFixed(4)}</span>
               </div>
             </Link>

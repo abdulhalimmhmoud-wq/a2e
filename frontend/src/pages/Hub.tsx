@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type AppConfig, type Tool } from "../api";
+import { useI18n } from "../i18n";
 
 export default function Hub() {
+  const { t } = useI18n();
   const [tools, setTools] = useState<Tool[]>([]);
   const [config, setConfig] = useState<AppConfig | null>(null);
 
@@ -15,16 +17,14 @@ export default function Hub() {
     <>
       <div className="page-head">
         <div>
-          <h1>الأدوات</h1>
-          <p className="sub">منصّة أدوات محلية — كل شيء يعمل على جهازك</p>
+          <h1>{t("hub.title")}</h1>
+          <p className="sub">{t("hub.subtitle")}</p>
         </div>
       </div>
 
       {config && !config.has_api_key && (
         <div className="notice">
-          <strong>مفتاح Anthropic غير مضبوط.</strong> الترجمة الحقيقية لن تعمل حتى
-          تضع <code>ANTHROPIC_API_KEY</code> في ملف <code>.env</code> في جذر
-          المشروع. التشغيل التجريبي بدون تكلفة متاح من صفحة المشروع.
+          <strong>{t("hub.noKeyTitle")}</strong> {t("hub.noKeyBody")}
         </div>
       )}
 
@@ -34,7 +34,7 @@ export default function Hub() {
             <div className="row" style={{ marginBottom: 8 }}>
               <strong style={{ fontSize: 16 }}>{tool.name}</strong>
               <div className="spacer" />
-              <span className="badge ok">متاحة</span>
+              <span className="badge ok">{t("hub.available")}</span>
             </div>
             <p className="muted" style={{ margin: 0 }}>
               {tool.description}
@@ -44,11 +44,10 @@ export default function Hub() {
 
         <div className="card" style={{ borderStyle: "dashed", opacity: 0.7 }}>
           <div className="row" style={{ marginBottom: 8 }}>
-            <strong style={{ fontSize: 16 }}>أداة جديدة</strong>
+            <strong style={{ fontSize: 16 }}>{t("hub.newToolTitle")}</strong>
           </div>
           <p className="muted" style={{ margin: 0 }}>
-            المنصّة مبنية كسجلّ أدوات — إضافة أداة جديدة تحتاج ملف تعريف ومجلّد
-            فقط، دون المساس بالأساس.
+            {t("hub.newToolBody")}
           </p>
         </div>
       </div>

@@ -151,7 +151,7 @@ def config() -> dict:
         )
     languages = [
         {"id": code, "label": language_label(code), "rtl": is_rtl(code)}
-        for code in ("ar", "en", "fr", "de", "es", "tr")
+        for code in ("ar", "en", "ru", "tr", "uk", "az", "fr", "de", "es", "it")
     ]
     engines = [
         {

@@ -37,17 +37,20 @@ _TARGET_CODES = {
     "en": "EN-US",
     "pt": "PT-PT",
     "ar": "AR",
+    "ru": "RU",
+    "tr": "TR",
+    "uk": "UK",
+    "az": "AZ",
     "fr": "FR",
     "de": "DE",
     "es": "ES",
     "it": "IT",
-    "tr": "TR",
-    "ru": "RU",
     "zh": "ZH",
 }
 _SOURCE_CODES = {
-    "en": "EN", "ar": "AR", "fr": "FR", "de": "DE", "es": "ES",
-    "it": "IT", "tr": "TR", "ru": "RU", "zh": "ZH", "pt": "PT",
+    "en": "EN", "ar": "AR", "ru": "RU", "tr": "TR", "uk": "UK",
+    "az": "AZ", "fr": "FR", "de": "DE", "es": "ES", "it": "IT",
+    "zh": "ZH", "pt": "PT",
 }
 
 # تعليمات مكثّفة لكل مجال — الحد 300 حرف للتعليمة و10 تعليمات كحد أقصى.
@@ -105,6 +108,14 @@ _BASE_INSTRUCTIONS = [
 
 _MAX_INSTRUCTIONS = 10
 _MAX_INSTRUCTION_CHARS = 300
+
+# لغات هدف رفضت `custom_instructions`. الـ API مابيعلنش عن القدرة دي
+# لكل لغة، فبنكتشفها من رفض فعلي ونفتكرها لباقي الجلسة بدل ما ندفع
+# رحلة فاشلة كل مرة.
+_NO_CUSTOM_INSTRUCTIONS: set[str] = set()
+
+# نفس الحكاية مع معالجة الوسوم — بعض اللغات ممكن ترفضها
+_NO_TAG_HANDLING: set[str] = set()
 
 
 def _map_source(lang: str) -> str | None:
@@ -220,6 +231,44 @@ class DeepLEngine:
 
         return self._glossary_id
 
+    # -- التنفيذ مع التراجع عن الميزات غير المدعومة ------------------------
+    def _translate_with_fallback(self, texts: list[str], options: dict):
+        """نداء DeepL مع إسقاط أي ميزة اللغة الهدف مابتدعمهاش.
+
+        DeepL مابيعلنش في `get_target_languages` أي لغة بتدعم
+        `custom_instructions` أو `tag_handling` — بيرفض بس وقت الطلب.
+        فبنجرّب بالكامل، ولو رفض بنشيل الميزة المرفوضة ونعيد، ونفتكر
+        القرار لباقي الجلسة عشان مانكررش الرحلة الفاشلة.
+
+        النتيجة: اللغة اللي مابتدعمش التعليمات بتترجم من غيرها بدل ما
+        الملف كله يفشل.
+        """
+        feature_errors = [
+            ("custom_instructions", _NO_CUSTOM_INSTRUCTIONS, "custom_instructions"),
+            ("tag_handling", _NO_TAG_HANDLING, "tag_handling"),
+        ]
+
+        for _attempt in range(len(feature_errors) + 1):
+            try:
+                return self.client.translate_text(texts, **options)
+            except Exception as exc:  # noqa: BLE001
+                message = str(exc).lower()
+                dropped = False
+                for option_key, memo, marker in feature_errors:
+                    if marker in message and option_key in options:
+                        options.pop(option_key)
+                        memo.add(self.target_code)
+                        logger.warning(
+                            "DeepL: %s مش مدعوم للغة %s — بنكمّل من غيره",
+                            option_key,
+                            self.target_code,
+                        )
+                        dropped = True
+                        break
+                if not dropped:
+                    raise
+        raise RuntimeError("DeepL رفض الطلب بعد إسقاط كل الميزات الاختيارية")
+
     # -- الترجمة ------------------------------------------------------------
     def translate(
         self,
@@ -240,10 +289,12 @@ class DeepLEngine:
 
         options: dict = {
             "target_lang": self.target_code,
-            "tag_handling": "xml",
             "preserve_formatting": True,
-            "custom_instructions": self.instructions,
         }
+        if self.target_code not in _NO_TAG_HANDLING:
+            options["tag_handling"] = "xml"
+        if self.target_code not in _NO_CUSTOM_INSTRUCTIONS:
+            options["custom_instructions"] = self.instructions
         if self.source_code:
             options["source_lang"] = self.source_code
         if context:
@@ -262,7 +313,7 @@ class DeepLEngine:
             options["glossary"] = glossary_id
 
         try:
-            responses = self.client.translate_text(texts, **options)
+            responses = self._translate_with_fallback(texts, options)
         except Exception as exc:  # noqa: BLE001
             logger.exception("فشل نداء DeepL")
             return BatchResult(

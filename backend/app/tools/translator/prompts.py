@@ -153,6 +153,125 @@ names, and keep the same form for the same name throughout the document.
 to the equivalent {target_lang_name} placeholder, never to prose.
 """
 
+# ---------------------------------------------------------------------------
+# ملاحظات لكل لغة على حدة — بتتركّب حسب اتجاه الترجمة
+# ---------------------------------------------------------------------------
+# كتابة كتلة لكل زوج معناها N² كتلة. بدل كده بنكتب ملاحظات لكل لغة
+# مرة كمصدر ومرة كهدف، والنظام بيركّبها حسب الاتجاه المطلوب.
+
+_AS_SOURCE: dict[str, str] = {
+    "ru": """\
+**Reading Russian.** Russian has no articles; supply `the`/`a` in the target
+from context, and do not leave a bare noun where English needs a determiner.
+Verbal aspect carries meaning that English expresses with tense and phrasing:
+a perfective verb usually maps to a completed action, an imperfective one to a
+process, a habit, or an attempt. Word order is free and marks emphasis — the
+element placed last is often the focus, so restructure rather than mirror.
+Case endings carry the roles that English marks with position and prepositions;
+identify subject and object from the endings, not from the order.
+Patronymics are part of the full name and should be kept.""",
+    "uk": """\
+**Reading Ukrainian.** Ukrainian is a distinct language, not a Russian
+variant — never render it through Russian conventions. Use Ukrainian-based
+transliteration for proper names: `Kyiv`, `Lviv`, `Kharkiv`, `Odesa`,
+`Volodymyr`. Like Russian it has no articles, marks case by ending, and uses
+verbal aspect; supply English determiners and choose tense from aspect. The
+vocative case appears in address and has no English counterpart — translate it
+as plain direct address.""",
+    "tr": """\
+**Reading Turkish.** Turkish is agglutinative: a single word can carry what
+English needs a whole clause for (`gelemeyeceklerini` → "that they would not
+be able to come"). Read the suffix chain before translating. Word order is
+subject-object-verb, so the verb arrives last — do not follow that order in
+English. There is no grammatical gender: the pronoun `o` is he, she, or it, so
+decide from context and stay consistent for the same referent. The evidential
+suffix `-mIş` marks reported or inferred information; render it as
+"apparently", "reportedly", or "it turns out" when the distinction matters,
+especially in testimony or medical history.""",
+    "az": """\
+**Reading Azerbaijani.** Azerbaijani is Turkic and agglutinative with
+subject-object-verb order, so the same suffix-chain and word-order cautions as
+Turkish apply. It is close to Turkish but distinct — do not silently substitute
+Turkish vocabulary. It has no grammatical gender; `o` covers he, she, and it.
+Modern Azerbaijani uses the Latin alphabet including `ə ğ ı ö ş ü ç`; treat
+these as ordinary letters and never strip their diacritics.""",
+    "en": """\
+**Reading English.** English marks grammatical roles by word order and
+prepositions rather than by endings, and strings clauses together with commas
+and relative pronouns far more than most target languages tolerate. Identify
+the actual subject of each clause before restructuring.""",
+}
+
+_AS_TARGET: dict[str, str] = {
+    "ru": """\
+**Writing Russian.** Every noun phrase needs the correct case, gender, and
+number, and adjectives and participles must agree with their head noun. Choose
+verbal aspect deliberately: a completed, bounded action takes the perfective; a
+process, repetition, or general statement takes the imperfective. Drop English
+articles rather than translating them. Use the formal `вы` in documents unless
+the source is clearly informal, and keep that choice consistent throughout.
+Latin-script product names, drug INNs, unit symbols, and code identifiers stay
+in Latin script.""",
+    "uk": """\
+**Writing Ukrainian.** Produce genuine Ukrainian, not Russian with Ukrainian
+spelling — watch for calques in vocabulary and syntax. Apply case, gender, and
+number agreement across the noun phrase, and choose verbal aspect as the
+meaning requires. Drop English articles. Use the formal `ви` in documents.
+Latin-script product names, drug INNs, unit symbols, and code identifiers stay
+in Latin script.""",
+    "tr": """\
+**Writing Turkish.** Build the suffix chain correctly and respect vowel
+harmony; a wrong vowel makes the word wrong, not merely awkward. Put the verb
+at the end of the clause. Break long English sentences into natural Turkish
+ones **within the same segment** — never split into two segments or merge two
+into one. Use the formal `siz` in documents. Latin-script product names, drug
+INNs, unit symbols, and code identifiers stay as written.""",
+    "az": """\
+**Writing Azerbaijani.** Build suffix chains with correct vowel harmony and
+place the verb at the end of the clause. Write in the Latin alphabet and use
+the full letter set `ə ğ ı i ö ş ü ç` — substituting `e` for `ə` or `i` for `ı`
+is a spelling error, not a variant. Do not borrow Turkish words where
+Azerbaijani has its own. Use formal address in documents. Latin-script product
+names, drug INNs, unit symbols, and code identifiers stay as written.""",
+    "en": """\
+**Writing English.** Prefer the natural English voice and a clear
+subject-verb-object order. Where the source language omits articles, supply
+them. Where it marks a distinction English lacks, express it with wording
+rather than dropping it — but never invent certainty the source does not
+carry.""",
+}
+
+_TAG_EXAMPLE = """\
+## Worked example of tag handling
+
+Some segments carry inline formatting tags. A tagged span moves with the words
+it belongs to, the tag numbers never change, every tag that opens is closed,
+and numbers inside stay intact:
+
+`<g1>The </g1><g2>First Party</g2><g3> shall pay within 30 days.</g3>`
+
+Word order will differ in your target language — move the tags with their
+words, do not leave them where they were.
+"""
+
+_PAIR_HEADER = """\
+## {source_lang_name}-to-{target_lang_name} specifics
+
+These are the failure modes that matter most on this language pair.
+
+**Numbers stay exactly as written.** Reproduce every digit, separator, and
+grouping character for character. Number formatting conventions differ between
+these languages; a separator whose meaning is ambiguous must be copied, never
+reinterpreted. A changed amount cannot be detected later.
+
+**Names.** Use the conventional {target_lang_name} form of personal and place
+names, and use the *same* form for the same name everywhere in the document.
+Inconsistent transliteration of a party or patient name is a defect.
+
+**Placeholders stay placeholders.** Empty-field markers in forms and tables map
+to the equivalent {target_lang_name} placeholder, never to prose.
+"""
+
 # تعليمات كل مجال — الفروق هنا حقيقية ومؤثرة على المخرجات
 _DOMAIN_RULES: dict[str, str] = {
     "legal": """\
@@ -250,6 +369,19 @@ def _pair_rules(source_lang: str, target_lang: str, names: dict) -> str:
         return (_ARABIC_PAIR_SHARED + "\n" + _AR_TO_EN).format(**names)
     if source == "en" and target == "ar":
         return (_ARABIC_PAIR_SHARED + "\n" + _EN_TO_AR).format(**names)
+
+    # الأزواج التانية بتتركّب من ملاحظات اللغتين حسب دورهما
+    source_notes = _AS_SOURCE.get(source)
+    target_notes = _AS_TARGET.get(target)
+    if source_notes or target_notes:
+        parts = [_PAIR_HEADER.format(**names)]
+        if source_notes:
+            parts.append(source_notes)
+        if target_notes:
+            parts.append(target_notes)
+        parts.append(_TAG_EXAMPLE)
+        return "\n\n".join(parts)
+
     if "ar" in (source, target):
         # زوج فيه عربية مع لغة تالتة — القواعد المشتركة تنفع
         return _ARABIC_PAIR_SHARED.format(**names)

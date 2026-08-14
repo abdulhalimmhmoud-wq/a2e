@@ -89,6 +89,15 @@ a:hover { text-decoration: underline; }
 .nav-link:hover { background: var(--surface-2); text-decoration: none; color: var(--text); }
 .nav-link.active { background: var(--accent-soft); color: var(--accent); }
 
+/* زر لغة الواجهة — أسفل الشريط الجانبي */
+.lang-toggle {
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  margin-top: auto;
+}
+.lang-toggle .badge { margin-inline-start: auto; }
+
 .main { flex: 1; padding: 26px 32px; max-width: 1500px; min-width: 0; }
 
 .page-head {

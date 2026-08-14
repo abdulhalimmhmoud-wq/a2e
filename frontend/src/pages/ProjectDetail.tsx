@@ -10,23 +10,26 @@ import {
   type Project,
   type SourceFile,
 } from "../api";
+import { DOMAIN_NAMES, localName, useI18n } from "../i18n";
 
 const FORMAT_LABEL: Record<string, string> = {
   docx: "Word",
   xlsx: "Excel",
   pptx: "PowerPoint",
   pdf: "PDF",
-  plain: "نص",
+  plain: "Text",
 };
 
-function bytes(size: number) {
-  if (size < 1024) return `${size} ب`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} كب`;
-  return `${(size / 1024 / 1024).toFixed(1)} مب`;
+function bytes(size: number, lang: string) {
+  const units = lang === "ar" ? ["ب", "كب", "مب"] : ["B", "KB", "MB"];
+  if (size < 1024) return `${size} ${units[0]}`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} ${units[1]}`;
+  return `${(size / 1024 / 1024).toFixed(1)} ${units[2]}`;
 }
 
 export default function ProjectDetail() {
   const { projectId = "" } = useParams();
+  const { t, lang } = useI18n();
   const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [editing, setEditing] = useState(false);
@@ -107,12 +110,7 @@ export default function ProjectDetail() {
   };
 
   const removeFile = async (file: SourceFile) => {
-    if (
-      !confirm(
-        `حذف «${file.original_filename}» ومقاطعه وترجمته نهائيًا؟\n` +
-          `ذاكرة الترجمة مش هتتأثر — المقاطع المعتمَدة بتفضل محفوظة فيها.`
-      )
-    )
+    if (!confirm(t("project.confirmDeleteFile", { name: file.original_filename })))
       return;
     try {
       await api.deleteFile(file.id);
@@ -126,11 +124,10 @@ export default function ProjectDetail() {
     if (!project) return;
     if (
       !confirm(
-        `حذف مشروع «${project.name}» نهائيًا؟\n\n` +
-          `هيتمسح: ${project.file_count} ملف · كل المقاطع والترجمات · ` +
-          `الملفات المرفوعة والمصدَّرة من على القرص.\n\n` +
-          `مش هيتمسح: ذاكرة الترجمة وقاعدة المصطلحات (بتفضل متاحة ` +
-          `للمشاريع الجاية).\n\nالعملية دي مالهاش تراجع.`
+        t("project.confirmDeleteProject", {
+          name: project.name,
+          files: project.file_count,
+        })
       )
     )
       return;
@@ -152,17 +149,15 @@ export default function ProjectDetail() {
     }
   };
 
-  if (!project) return <div className="empty">جارٍ التحميل…</div>;
+  if (!project) return <div className="empty">{t("common.loading")}</div>;
 
   const hasKey = config?.has_api_key ?? false;
   // زر «ترجمة» بيستخدم محرّك المشروع، فبنتأكد إن مفتاحه موجود
   const engineReady =
     config?.engines.find((e) => e.id === project.engine)?.available ?? hasKey;
-  // الوفر الحقيقي للتنفيذ المؤجَّل بيتآكل كل ما الملف يكبر، لأن الوضع
-  // الفوري بيستفيد من التخزين المؤقت والمؤجَّل لأ. بنعرض الرقم الفعلي.
+  // الوفر الحقيقي للتنفيذ المؤجَّل بيتآكل كل ما الملف يكبر
   const batchSaving =
-    estimate?.options.find((o) => o.model === project.model)?.batch_saving_pct ??
-    null;
+    estimate?.options.find((o) => o.model === project.model)?.batch_saving_pct ?? null;
 
   return (
     <>
@@ -170,8 +165,8 @@ export default function ProjectDetail() {
         <div>
           <h1>{project.name}</h1>
           <p className="sub">
-            <Link to="/translator">المترجم</Link> · {project.source_lang}→
-            {project.target_lang} · {project.domain} ·{" "}
+            <Link to="/translator">{t("nav.translator")}</Link> · {project.source_lang}→
+            {project.target_lang} · {localName(DOMAIN_NAMES, project.domain, lang)} ·{" "}
             {project.engine === "deepl" ? "DeepL" : project.model}
           </p>
         </div>
@@ -189,35 +184,38 @@ export default function ProjectDetail() {
             onClick={() => inputRef.current?.click()}
             disabled={busy}
           >
-            {busy ? "جارٍ الرفع…" : "رفع ملفات"}
+            {busy ? t("project.uploading") : t("project.upload")}
           </button>
           <button className="btn" onClick={() => setEditing((v) => !v)}>
-            {editing ? "إغلاق" : "إعدادات"}
+            {editing ? t("common.close") : t("common.settings")}
           </button>
           <button className="btn danger" onClick={removeProject}>
-            حذف المشروع
+            {t("project.delete")}
           </button>
         </div>
       </div>
+
+      {error && <div className="error-box">{error}</div>}
+      {!hasKey && <div className="notice">{t("project.noKeyNotice")}</div>}
 
       {editing && (
         <div className="card" style={{ marginBottom: 18 }}>
           <div className="row" style={{ alignItems: "flex-end" }}>
             <div className="field" style={{ flex: 1, minWidth: 170, marginBottom: 0 }}>
-              <label>المجال</label>
+              <label>{t("projects.domain")}</label>
               <select
                 value={project.domain}
                 onChange={(e) => saveSettings({ domain: e.target.value })}
               >
                 {config?.domains.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.label}
+                    {localName(DOMAIN_NAMES, d.id, lang)}
                   </option>
                 ))}
               </select>
             </div>
             <div className="field" style={{ flex: 1, minWidth: 150, marginBottom: 0 }}>
-              <label>المحرّك</label>
+              <label>{t("projects.engine")}</label>
               <select
                 value={project.engine}
                 onChange={(e) => saveSettings({ engine: e.target.value })}
@@ -225,14 +223,14 @@ export default function ProjectDetail() {
                 {config?.engines.map((e) => (
                   <option key={e.id} value={e.id} disabled={!e.available}>
                     {e.label}
-                    {!e.available && " (مفيش مفتاح)"}
+                    {!e.available && ` ${t("projects.noEngineKey")}`}
                   </option>
                 ))}
               </select>
             </div>
             {project.engine === "claude" && (
               <div className="field" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
-                <label>الموديل</label>
+                <label>{t("projects.model")}</label>
                 <select
                   value={project.model}
                   onChange={(e) => saveSettings({ model: e.target.value })}
@@ -248,7 +246,7 @@ export default function ProjectDetail() {
           </div>
 
           <div className="field" style={{ marginTop: 14, marginBottom: 0 }}>
-            <label>ملاحظات أسلوبية</label>
+            <label>{t("projects.styleNotes")}</label>
             <textarea
               rows={2}
               defaultValue={project.style_notes}
@@ -256,21 +254,12 @@ export default function ProjectDetail() {
                 e.target.value !== project.style_notes &&
                 saveSettings({ style_notes: e.target.value })
               }
-              placeholder="مثال: احتفظ بأسماء الشركات كما هي دون ترجمة"
+              placeholder={t("projects.styleNotesPlaceholder")}
             />
           </div>
           <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
-            التغييرات بتأثّر على الترجمات الجديدة بس — المقاطع المترجمة
-            بالفعل مابتتغيّرش.
+            {t("project.settingsHint")}
           </p>
-        </div>
-      )}
-
-      {error && <div className="error-box">{error}</div>}
-      {!hasKey && (
-        <div className="notice">
-          مفتاح Anthropic غير مضبوط — زر «ترجمة» معطّل. يمكنك تجربة الخط كاملًا
-          بزر «تشغيل تجريبي» بدون أي تكلفة.
         </div>
       )}
 
@@ -278,28 +267,29 @@ export default function ProjectDetail() {
       {estimate && estimate.words > 0 && (
         <div className="grid cols-4" style={{ marginBottom: 18 }}>
           <div className="card stat">
-            <div className="label">الحجم</div>
-            <div className="value">{estimate.words.toLocaleString("ar-EG")}</div>
+            <div className="label">{t("project.size")}</div>
+            <div className="value">{estimate.words.toLocaleString()}</div>
             <div className="hint">
-              كلمة · {estimate.pages} صفحة · {estimate.segments} مقطع
+              {t("common.words")} · {estimate.pages} {t("common.pages")} ·{" "}
+              {estimate.segments} {t("common.segments")}
             </div>
           </div>
           <div className="card stat">
-            <div className="label">تغطية الذاكرة</div>
+            <div className="label">{t("project.memoryCoverage")}</div>
             <div className="value">{estimate.memory_coverage_pct}%</div>
-            <div className="hint">مقاطع مترجمة سابقًا — بدون تكلفة</div>
+            <div className="hint">{t("project.memoryCoverageHint")}</div>
           </div>
           {estimate.options.slice(0, 2).map((option) => (
             <div className="card stat" key={option.model}>
               <div className="label">
                 {option.label}
-                {option.promo_active && " (عرض)"}
+                {option.promo_active && ` ${t("project.promo")}`}
               </div>
               <div className="value">${option.cost_usd.toFixed(3)}</div>
               <div className="hint">
-                ${option.cost_per_page.toFixed(4)}/صفحة · مؤجَّل $
-                {option.cost_usd_batch.toFixed(3)} (وفر{" "}
-                {option.batch_saving_pct.toFixed(0)}%)
+                ${option.cost_per_page.toFixed(4)}/{t("common.perPage")} ·{" "}
+                {t("project.deferred")} ${option.cost_usd_batch.toFixed(3)} (
+                {t("project.saving")} {option.batch_saving_pct.toFixed(0)}%)
               </div>
             </div>
           ))}
@@ -309,17 +299,21 @@ export default function ProjectDetail() {
       {cost && cost.total_cost_usd > 0 && (
         <div className="card" style={{ marginBottom: 18 }}>
           <div className="row">
-            <strong>التكلفة الفعلية: ${cost.total_cost_usd.toFixed(4)}</strong>
+            <strong>
+              {t("project.actualCost")}: ${cost.total_cost_usd.toFixed(4)}
+            </strong>
             <span className="muted">
-              (${cost.cost_per_page.toFixed(4)} للصفحة)
+              (${cost.cost_per_page.toFixed(4)} {t("project.perPageShort")})
             </span>
             <div className="spacer" />
             <span className="badge ok">
-              وفّرت {cost.savings.segments_from_memory} مقطع من الذاكرة
+              {t("project.savedFromMemory", { n: cost.savings.segments_from_memory })}
             </span>
             {cost.savings.cache_saving_usd > 0 && (
               <span className="badge ok">
-                وفّرت ${cost.savings.cache_saving_usd.toFixed(4)} من التخزين المؤقت
+                {t("project.savedFromCache", {
+                  n: cost.savings.cache_saving_usd.toFixed(4),
+                })}
               </span>
             )}
           </div>
@@ -328,27 +322,24 @@ export default function ProjectDetail() {
 
       {/* ------------------------------------------------ الملفات */}
       {files.length === 0 ? (
-        <div className="empty">
-          لا توجد ملفات. ارفع ملف Word أو Excel أو PowerPoint أو PDF للبدء.
-        </div>
+        <div className="empty">{t("project.emptyFiles")}</div>
       ) : (
         <div className="card" style={{ padding: 0 }}>
           <table>
             <thead>
               <tr>
-                <th>الملف</th>
-                <th style={{ width: 90 }}>الصيغة</th>
-                <th style={{ width: 150 }}>الحجم</th>
-                <th style={{ width: 210 }}>التقدّم</th>
-                <th style={{ width: 300 }}>الإجراءات</th>
+                <th>{t("project.colFile")}</th>
+                <th style={{ width: 90 }}>{t("project.colFormat")}</th>
+                <th style={{ width: 150 }}>{t("project.colSize")}</th>
+                <th style={{ width: 210 }}>{t("project.colProgress")}</th>
+                <th style={{ width: 320 }}>{t("project.colActions")}</th>
               </tr>
             </thead>
             <tbody>
               {files.map((file) => {
                 const job = jobs[file.id];
                 const running =
-                  job &&
-                  ["queued", "running", "cancelling"].includes(job.status);
+                  job && ["queued", "running", "cancelling"].includes(job.status);
                 const progress = file.progress;
 
                 return (
@@ -370,12 +361,12 @@ export default function ProjectDetail() {
                       <span className="badge">{FORMAT_LABEL[file.fmt] ?? file.fmt}</span>
                     </td>
                     <td className="muted" style={{ fontSize: 12.5 }}>
-                      {bytes(file.size_bytes)}
+                      {bytes(file.size_bytes, lang)}
                       {file.segment_count > 0 && (
                         <>
                           <br />
-                          {file.word_count.toLocaleString("ar-EG")} كلمة ·{" "}
-                          {file.segment_count} مقطع
+                          {file.word_count.toLocaleString()} {t("common.words")} ·{" "}
+                          {file.segment_count} {t("common.segments")}
                         </>
                       )}
                     </td>
@@ -401,8 +392,10 @@ export default function ProjectDetail() {
                             <div style={{ width: `${progress.done_pct}%` }} />
                           </div>
                           <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>
-                            {progress.approved + progress.reviewed}/{progress.total} معتمد
-                            {progress.flagged > 0 && ` · ${progress.flagged} تنبيه`}
+                            {progress.approved + progress.reviewed}/{progress.total}{" "}
+                            {t("project.approvedOf")}
+                            {progress.flagged > 0 &&
+                              ` · ${progress.flagged} ${t("project.alerts")}`}
                           </div>
                         </>
                       ) : (
@@ -417,7 +410,7 @@ export default function ProjectDetail() {
                             disabled={running}
                             onClick={async () => track(file.id, await api.extract(file.id))}
                           >
-                            استخراج
+                            {t("project.extract")}
                           </button>
                         )}
                         {(file.status === "extracted" || file.status === "translated") && (
@@ -426,35 +419,37 @@ export default function ProjectDetail() {
                               className="btn sm primary"
                               disabled={running || !engineReady}
                               onClick={() => translate(file, "auto")}
-                              title={`المحرّك: ${
-                                project.engine === "deepl" ? "DeepL" : project.model
-                              }`}
+                              title={t("project.engineTitle", {
+                                engine:
+                                  project.engine === "deepl" ? "DeepL" : project.model,
+                              })}
                             >
-                              ترجمة
+                              {t("project.translate")}
                             </button>
                             {/* التنفيذ المؤجَّل خاص بـ Claude — DeepL مالوش وضع مجمّع */}
                             {project.engine === "claude" && (
-                            <button
-                              className="btn sm"
-                              disabled={running || !hasKey}
-                              onClick={() => translate(file, "batch")}
-                              title={
-                                batchSaving !== null
-                                  ? `تنفيذ غير فوري (قد يستغرق حتى ساعة أو أكثر). ` +
-                                    `الوفر المتوقع لهذا الحجم: ${batchSaving}%`
-                                  : "تنفيذ غير فوري — أرخص، لكن النتيجة لا تصل فورًا"
-                              }
-                            >
-                              تنفيذ مؤجَّل
-                            </button>
+                              <button
+                                className="btn sm"
+                                disabled={running || !hasKey}
+                                onClick={() => translate(file, "batch")}
+                                title={
+                                  batchSaving !== null
+                                    ? t("project.deferredTitle", {
+                                        pct: batchSaving.toFixed(0),
+                                      })
+                                    : t("project.deferredTitlePlain")
+                                }
+                              >
+                                {t("project.deferredRun")}
+                              </button>
                             )}
                             <button
                               className="btn sm"
                               disabled={running}
                               onClick={() => translate(file, "echo")}
-                              title="يشغّل الخط كاملًا بترجمة وهمية — بدون تكلفة"
+                              title={t("project.dryRunTitle")}
                             >
-                              تشغيل تجريبي
+                              {t("project.dryRun")}
                             </button>
                           </>
                         )}
@@ -463,21 +458,21 @@ export default function ProjectDetail() {
                             className="btn sm"
                             to={`/translator/${projectId}/review/${file.id}`}
                           >
-                            مراجعة
+                            {t("project.review")}
                           </Link>
                         )}
                         {file.status === "translated" && (
                           <a className="btn sm" href={api.downloadUrl(file.id)}>
-                            تنزيل
+                            {t("project.download")}
                           </a>
                         )}
                         {running && job.kind === "translate" && (
                           <button
                             className="btn sm danger"
                             onClick={() => cancel(file.id, job.id)}
-                            title="بيوقف الدفعات اللي لسه ماابتدتش — المترجَم بيفضل محفوظ"
+                            title={t("project.stopTitle")}
                           >
-                            إيقاف
+                            {t("project.stop")}
                           </button>
                         )}
                         {!running && (
@@ -485,7 +480,7 @@ export default function ProjectDetail() {
                             className="btn sm danger"
                             onClick={() => removeFile(file)}
                           >
-                            حذف
+                            {t("common.delete")}
                           </button>
                         )}
                       </div>

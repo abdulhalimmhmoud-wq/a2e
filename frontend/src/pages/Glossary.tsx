@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, type AppConfig, type GlossaryTerm } from "../api";
+import { DOMAIN_NAMES, localName, useI18n } from "../i18n";
 
 export default function Glossary() {
+  const { t, lang } = useI18n();
   const [terms, setTerms] = useState<GlossaryTerm[]>([]);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [error, setError] = useState("");
@@ -34,10 +36,8 @@ export default function Glossary() {
     <>
       <div className="page-head">
         <div>
-          <h1>قاعدة المصطلحات</h1>
-          <p className="sub">
-            ترجمات ملزمة تُحقن في تعليمات النموذج، وتُفحص بعد الترجمة تلقائيًا
-          </p>
+          <h1>{t("glossary.title")}</h1>
+          <p className="sub">{t("glossary.subtitle")}</p>
         </div>
       </div>
 
@@ -46,54 +46,51 @@ export default function Glossary() {
       <div className="card" style={{ marginBottom: 18 }}>
         <div className="row" style={{ alignItems: "flex-end" }}>
           <div className="field" style={{ flex: 1, minWidth: 170, marginBottom: 0 }}>
-            <label>المصطلح (عربي)</label>
+            <label>{t("glossary.source")}</label>
             <input
               value={form.source_term}
               onChange={(e) => setForm({ ...form, source_term: e.target.value })}
-              placeholder="عقد إذعان"
+              placeholder={t("glossary.sourcePlaceholder")}
             />
           </div>
           <div className="field" style={{ flex: 1, minWidth: 170, marginBottom: 0 }}>
-            <label>الترجمة (إنجليزي)</label>
+            <label>{t("glossary.target")}</label>
             <input
               className="ltr"
               value={form.target_term}
               onChange={(e) => setForm({ ...form, target_term: e.target.value })}
-              placeholder="Contract of Adhesion"
+              placeholder={t("glossary.targetPlaceholder")}
             />
           </div>
           <div className="field" style={{ width: 150, marginBottom: 0 }}>
-            <label>المجال</label>
+            <label>{t("glossary.domain")}</label>
             <select
               value={form.domain}
               onChange={(e) => setForm({ ...form, domain: e.target.value })}
             >
               {config?.domains.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.label}
+                  {localName(DOMAIN_NAMES, d.id, lang)}
                 </option>
               ))}
             </select>
           </div>
           <button className="btn primary" onClick={add}>
-            إضافة
+            {t("common.add")}
           </button>
         </div>
       </div>
 
       {terms.length === 0 ? (
-        <div className="empty">
-          لا توجد مصطلحات بعد. المصطلحات المضافة هنا تُطبَّق على كل المشاريع في
-          نفس المجال.
-        </div>
+        <div className="empty">{t("glossary.empty")}</div>
       ) : (
         <div className="card" style={{ padding: 0 }}>
           <table>
             <thead>
               <tr>
-                <th>المصطلح</th>
-                <th>الترجمة</th>
-                <th style={{ width: 110 }}>المجال</th>
+                <th>{t("glossary.source")}</th>
+                <th>{t("glossary.target")}</th>
+                <th style={{ width: 110 }}>{t("glossary.domain")}</th>
                 <th style={{ width: 80 }} />
               </tr>
             </thead>
@@ -103,7 +100,9 @@ export default function Glossary() {
                   <td>{term.source_term}</td>
                   <td className="ltr">{term.target_term}</td>
                   <td>
-                    <span className="badge">{term.domain}</span>
+                    <span className="badge">
+                      {localName(DOMAIN_NAMES, term.domain, lang)}
+                    </span>
                   </td>
                   <td>
                     <button
@@ -113,7 +112,7 @@ export default function Glossary() {
                         load();
                       }}
                     >
-                      حذف
+                      {t("common.delete")}
                     </button>
                   </td>
                 </tr>
