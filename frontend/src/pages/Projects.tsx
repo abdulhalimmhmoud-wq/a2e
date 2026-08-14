@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type AppConfig, type Project } from "../api";
-import { DOMAIN_NAMES, LANGUAGE_NAMES, localName, useI18n } from "../i18n";
+import { DOMAIN_NAMES, LANGUAGE_NAMES, localName, pick, useI18n } from "../i18n";
 
 export default function Projects() {
   const { t, lang } = useI18n();
@@ -159,7 +159,7 @@ export default function Projects() {
                   onClick={() => setForm({ ...form, engine: engine.id })}
                   title={
                     engine.available
-                      ? engine.note
+                      ? pick(engine.note, lang)
                       : t("projects.needsKey", { engine: engine.label })
                   }
                 >
@@ -171,7 +171,7 @@ export default function Projects() {
               ))}
             </div>
             <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
-              {config?.engines.find((e) => e.id === form.engine)?.note}
+              {pick(config?.engines.find((e) => e.id === form.engine)?.note, lang)}
             </p>
           </div>
 

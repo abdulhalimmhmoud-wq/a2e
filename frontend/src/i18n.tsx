@@ -408,6 +408,15 @@ export const DOMAIN_NAMES: Record<string, Entry> = {
   general: { ar: "عام", en: "General" },
 };
 
+/** اختيار النص من كائن {ar,en} جاي من الخادم. */
+export function pick(
+  value: { ar: string; en: string } | string | undefined,
+  lang: UiLang
+): string {
+  if (!value) return "";
+  return typeof value === "string" ? value : value[lang];
+}
+
 export function localName(
   table: Record<string, Entry>,
   code: string,

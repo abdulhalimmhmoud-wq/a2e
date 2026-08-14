@@ -121,12 +121,24 @@ def health() -> dict:
 
 @router.get("/tools")
 def tools() -> list[dict]:
-    """سجلّ الأدوات — الصفحة الرئيسية بتتبني منه."""
+    """سجلّ الأدوات — الصفحة الرئيسية بتتبني منه.
+
+    النصوص بترجع باللغتين لأن الواجهة بتتبدّل بين عربي وإنجليزي،
+    والأدوات بتتسجّل هنا مش في الواجهة.
+    """
     return [
         {
             "id": "translator",
-            "name": "المترجم الاحترافي",
-            "description": "ترجمة المستندات مع الحفاظ الكامل على التنسيق ومراجعة ثنائية اللغة",
+            "name": {
+                "ar": "المترجم الاحترافي",
+                "en": "Professional Translator",
+            },
+            "description": {
+                "ar": "ترجمة المستندات مع الحفاظ الكامل على التنسيق "
+                      "ومراجعة ثنائية اللغة",
+                "en": "Document translation with formatting preserved exactly, "
+                      "and a bilingual review screen",
+            },
             "icon": "languages",
             "path": "/translator",
             "status": "available",
@@ -158,17 +170,27 @@ def config() -> dict:
             "id": "claude",
             "label": "Claude",
             "available": bool(settings.anthropic_api_key),
-            "note": "نموذج لغوي — يفهم تعليمات المجال والسياق والغموض المتعمّد. "
-                    "الأدق للمستندات القانونية والطبية.",
-            "pricing": "بالتوكن",
+            "note": {
+                "ar": "نموذج لغوي — يفهم تعليمات المجال والسياق والغموض "
+                      "المتعمّد. الأدق للمستندات القانونية والطبية.",
+                "en": "A language model — follows domain instructions, uses "
+                      "context, and preserves deliberate ambiguity. The more "
+                      "accurate choice for legal and medical documents.",
+            },
+            "pricing": {"ar": "بالتوكن", "en": "per token"},
         },
         {
             "id": "deepl",
             "label": "DeepL",
             "available": bool(settings.deepl_api_key),
-            "note": "ترجمة آلية متخصصة — أسرع بكتير وثابتة النتيجة، "
-                    "ومجانية حتى 500 ألف حرف شهريًا. تعليمات المجال مختصرة.",
-            "pricing": "بالحرف",
+            "note": {
+                "ar": "ترجمة آلية متخصصة — أسرع بكتير وثابتة النتيجة، "
+                      "ومجانية حتى 500 ألف حرف شهريًا. تعليمات المجال مختصرة.",
+                "en": "A dedicated machine-translation engine — far faster and "
+                      "deterministic, free up to 500k characters a month. "
+                      "Domain instructions are condensed.",
+            },
+            "pricing": {"ar": "بالحرف", "en": "per character"},
         },
     ]
     return {

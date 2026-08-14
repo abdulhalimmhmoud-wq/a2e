@@ -21,17 +21,44 @@ _SENT_END = r"[.؟?!؛]"
 # أرقام لاتينية وعربية-هندية
 _DIGITS = r"\d٠-٩"
 
-# اختصارات شائعة مايتقسمش بعدها
+# اختصارات **مايتقسمش بعدها أبدًا**: ألقاب وبادئات بيتبعها اسم،
+# فالحرف الكبير اللي بعدها جزء من الاسم مش بداية جملة.
 _ABBREVIATIONS = {
     # إنجليزي
-    "mr", "mrs", "ms", "dr", "prof", "st", "vs", "etc", "eg", "ie", "cf",
-    "fig", "figs", "no", "vol", "pp", "ed", "eds", "al", "inc", "ltd", "co",
+    "mr", "mrs", "ms", "dr", "prof", "st", "eg", "ie", "cf",
+    "fig", "figs", "no", "ed", "eds", "al", "inc", "ltd", "co",
     "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct",
-    "nov", "dec", "approx", "dept", "univ", "art", "sec", "para",
+    "nov", "dec", "dept", "univ", "art", "sec", "para",
     # عربي
     "د", "أ", "م", "ص", "ط", "هـ",
     "ج", "ق", "ش",
+    # روسي وأوكراني — دي بتكسر الجمل بشكل متكرر في المستندات الرسمية
+    "г", "гг", "ул", "д", "кв", "стр",
+    "им", "обл", "респ", "проф", "акад", "рис", "табл", "напр",
+    "т", "п", "др", "пр", "мин", "макс", "ср", "тел", "прим",
+    "вул", "буд", "рік", "ст", "див",
+    # تركي وأذربيجاني
+    "bkz", "örn", "sf", "yy", "bşk", "müh", "av", "sok",
+    "cad", "no", "tel", "yak", "təq", "məs", "s", "b",
 }
+
+# اختصارات **وحدات وقياسات** — دي بيتبعها تكملة الجملة عادةً، فمش
+# نهاية جملة. لكن لو اللي بعدها حرف كبير، فغالبًا جملة جديدة ابتدت:
+#   "150 000 руб. НДС включён."  → جملتان
+#   "150 000 руб. и НДС"         → جملة واحدة
+# التمييز ده مالوش معنى في العربية (مافيش حروف كبيرة)، فاختصاراتها
+# كلها في المجموعة الأولى.
+_UNIT_ABBREVIATIONS = {
+    "руб", "коп", "тыс", "млн", "млрд", "грн", "тис", "см", "мм", "кг", "шт",
+    "vb", "vs", "etc", "vol", "pp", "approx",
+}
+
+# تأكيد إن المجموعتين مانفصلتين — التداخل بيخلّي الأولى تكسب دايمًا
+# والقاعدة التانية ماتشتغلش أبدًا
+assert not (_ABBREVIATIONS & _UNIT_ABBREVIATIONS), (
+    "اختصار موجود في المجموعتين: "
+    f"{_ABBREVIATIONS & _UNIT_ABBREVIATIONS}"
+)
 
 # ترقيم قائمة في بداية السطر: "1." أو "أ)" أو "(3)"
 _LIST_PREFIX_RE = re.compile(
@@ -57,6 +84,13 @@ _ENUMERATOR_WORDS = {
     "article", "section", "clause", "item", "figure", "fig", "table",
     "no", "paragraph", "para", "part", "chapter", "annex", "appendix",
     "rule", "exhibit", "schedule",
+    # روسي وأوكراني
+    "статья", "статьи", "стаття", "статті", "пункт", "пункту",
+    "раздел", "розділ", "глава", "розд", "приложение", "додаток",
+    "таблица", "таблиця", "рисунок", "рисунок", "часть", "частина",
+    # تركي وأذربيجاني
+    "madde", "maddə", "fıkra", "bənd", "bölüm", "fəsil", "kısım",
+    "ek", "əlavə", "tablo", "cədvəl", "şekil", "şəkil", "sayılı",
 }
 
 # رأس سطر على هيئة "كلمة ترقيم + رقم/حرف" — مثل "المادة 12" أو "البند (أ)".
@@ -108,6 +142,16 @@ def _is_false_break(text: str, pos: int) -> bool:
         word = word_match.group(1).lower().strip()
         if word in _ABBREVIATIONS:
             return True
+
+        # اختصار وحدة: بنكسر بس لو اللي بعده يبدو بداية جملة جديدة
+        if word in _UNIT_ABBREVIATIONS:
+            following = re.search(r"\s+(\S)", text[pos + 1 :])
+            starts_sentence = bool(
+                following
+                and following.group(1).isupper()
+            )
+            return not starts_sentence
+
         # حرف مفرد متبوع بنقطة (اختصار اسم: A. Smith)
         if len(word) == 1 and word.isalpha():
             return True

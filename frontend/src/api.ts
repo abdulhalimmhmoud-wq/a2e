@@ -22,10 +22,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 // ---------------------------------------------------------------- الأنواع
+/** نص بلغتين جاي من الخادم — الواجهة بتختار حسب لغتها. */
+export type Localised = { ar: string; en: string };
+
 export interface Tool {
   id: string;
-  name: string;
-  description: string;
+  name: Localised;
+  description: Localised;
   icon: string;
   path: string;
   status: string;
@@ -50,8 +53,8 @@ export interface EngineInfo {
   id: string;
   label: string;
   available: boolean;
-  note: string;
-  pricing: string;
+  note: Localised;
+  pricing: Localised;
 }
 
 export interface AppConfig {
