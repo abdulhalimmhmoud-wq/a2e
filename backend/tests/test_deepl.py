@@ -206,6 +206,38 @@ def main() -> int:
         else:
             print("  ✓ السياق مش محسوب في التكلفة")
 
+        # ---------- 5ب) اللغات اللي فعلها في آخر الجملة ----------
+        print("\n=== 5ب) الوسوم مع اللغات اللي فعلها في الآخر ===")
+        tagged = [
+            SegmentInput(
+                id="t1",
+                source="<g1>The agreement was signed in </g1><g2>Kyiv</g2>",
+            )
+        ]
+
+        # تركي: الفعل في الآخر → الوسوم بتتشال والتنسيق بيتبسّط
+        verb_final = build_engine(target_lang="tr")
+        result_tr = verb_final.translate(tagged)
+        sent_tr = FakeClient.instances[-1].calls[-1]["texts"][0]
+        flags_tr = result_tr.segment_flags.get("t1", [])
+        print(f"  tr: اتبعت={sent_tr[:44]!r}")
+        print(f"      أعلام={flags_tr}")
+        if "<g1>" in sent_tr:
+            failures.append(
+                "التركية لغة فعلها في الآخر — الوسوم المفروض تتشال "
+                "وإلا الجملة بتطلع مكسورة"
+            )
+        if "formatting_simplified" not in flags_tr:
+            failures.append("تبسيط التنسيق حصل من غير ما يتعلّم للمراجع")
+
+        # فرنسي: ترتيبه قريب من الإنجليزي → الوسوم بتفضل
+        keeps = build_engine(target_lang="fr")
+        keeps.translate(tagged)
+        sent_fr = FakeClient.instances[-1].calls[-1]["texts"][0]
+        print(f"  fr: اتبعت={sent_fr[:44]!r}")
+        if "<g1>" not in sent_fr:
+            failures.append("الفرنسية المفروض تحتفظ بالوسوم — التنسيق اتضحّى بلا داعي")
+
         # ---------- 6) فشل الشبكة ----------
         print("\n=== 6) التعامل مع الفشل ===")
 

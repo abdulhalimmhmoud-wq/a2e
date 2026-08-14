@@ -10,6 +10,22 @@ import re
 # لغات تُكتب من اليمين لليسار
 RTL_LANGUAGES = {"ar", "he", "fa", "ur", "ps", "sd", "yi"}
 
+# لغات الفعل فيها في آخر الجملة (فاعل-مفعول-فعل).
+#
+# ليه بنهتم؟ محرّكات الترجمة الآلية بتترجم كل جزء موسوم بالتنسيق
+# شبه مستقل. مع لغة بترتّب الجملة زي الإنجليزية، ده مايضرّش. مع لغة
+# الفعل فيها في الآخر، الجزء الأول بيبقى ناقص فعله فالمحرّك بيخترع
+# فعلًا يكمّل بيه، وبعدين بيكرّره في الجزء الأخير:
+#
+#   المصدر : <g1>The agreement was signed in </g1><g2>Kyiv</g2>...
+#   المخرَج: <g1>Anlaşma şu şehirde imzalandı: </g1><g2>Kiev'de</g2>
+#            <g3> 15 Mart 2026 tarihinde imzalandı.</g3>
+#            (الفعل imzalandı اتكرر، و"şu şehirde" حشو مالوش أصل)
+#
+# القياس ده على DeepL. Claude مابيقعش فيه لأنه بيشوف المقطع كله مرة
+# واحدة ويوزّع الوسوم بعد ما يفهم الجملة.
+VERB_FINAL_LANGUAGES = {"tr", "az", "ja", "ko", "hi", "ur", "fa", "kk", "uz"}
+
 LANGUAGE_NAMES = {
     "ar": "Arabic",
     "en": "English",
@@ -95,6 +111,11 @@ _WORD_RE = re.compile(r"[^\W\d_]", re.UNICODE)
 def is_rtl(lang: str) -> bool:
     """هل اللغة دي بتتكتب من اليمين لليسار؟"""
     return lang.split("-")[0].lower() in RTL_LANGUAGES
+
+
+def is_verb_final(lang: str) -> bool:
+    """هل الفعل بييجي في آخر الجملة في اللغة دي؟"""
+    return lang.split("-")[0].lower() in VERB_FINAL_LANGUAGES
 
 
 def language_name(lang: str) -> str:

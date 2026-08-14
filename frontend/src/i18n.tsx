@@ -303,6 +303,14 @@ const S = {
     en: "Number separator differs from source",
   },
   "flag.untranslated": { ar: "غير مترجم", en: "Untranslated" },
+  "flag.duplicated_word": {
+    ar: "كلمة مكرّرة — راجع حدود التنسيق",
+    en: "Duplicated word — check the formatting boundary",
+  },
+  "flag.formatting_simplified": {
+    ar: "التنسيق الداخلي بُسّط عمدًا لسلامة الجملة",
+    en: "Inline formatting simplified on purpose to keep the sentence sound",
+  },
   "flag.wrong_script": { ar: "كتابة غير متوقعة", en: "Unexpected script" },
   "flag.too_short": { ar: "قصير بشكل غير معتاد", en: "Unusually short" },
   "flag.too_long": { ar: "طويل بشكل غير معتاد", en: "Unusually long" },

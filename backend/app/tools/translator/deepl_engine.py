@@ -29,6 +29,8 @@ import logging
 
 from app.core.config import settings
 from app.tools.translator.engine import BatchResult, SegmentInput, Usage
+from app.tools.translator.formats.base import strip_tags, tags_in
+from app.tools.translator.langs import is_verb_final
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +184,15 @@ class DeepLEngine:
 
         self.source_code = _map_source(source_lang)
         self.target_code = _map_target(target_lang)
+        # مقيس فعليًا: مع التركية والأذربيجانية بتطلع الجملة مكسورة
+        # لما الوسوم بتقسّمها. انظر VERB_FINAL_LANGUAGES.
+        self.strip_tags_for_target = is_verb_final(target_lang)
+        if self.strip_tags_for_target:
+            logger.info(
+                "DeepL: %s لغة فعلها في الآخر — هنبعت من غير وسوم تنسيق "
+                "عشان الجملة تطلع سليمة",
+                target_lang,
+            )
         self.instructions = _build_instructions(domain, style_notes)
         self._glossary_terms = glossary or []
         self._glossary_id: str | None = None
@@ -282,7 +293,21 @@ class DeepLEngine:
         import deepl
 
         result = BatchResult()
-        texts = [segment.source for segment in segments]
+
+        # مع اللغات اللي فعلها في آخر الجملة، ترجمة الأجزاء الموسومة
+        # كل واحد لوحده بتطلع جملة مكسورة (فعل مكرر + حشو). بنبعت
+        # النص من غير وسوم فيطلع صحيح، والدمج بيحطه بالتنسيق الغالب.
+        # النص الصح بتنسيق مبسّط أفضل من نص مكسور بتنسيق محفوظ.
+        drop_tags = self.strip_tags_for_target
+        texts: list[str] = []
+        for segment in segments:
+            if drop_tags and tags_in(segment.source):
+                texts.append(strip_tags(segment.source))
+                result.segment_flags.setdefault(segment.id, []).append(
+                    "formatting_simplified"
+                )
+            else:
+                texts.append(segment.source)
 
         # السياق مجاني في فاتورة DeepL، فبنبعته كامل من غير تردد
         context = " ".join(part for part in (context_before, context_after) if part)

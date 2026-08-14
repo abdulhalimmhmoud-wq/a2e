@@ -62,6 +62,9 @@ class BatchResult:
     usage: Usage = field(default_factory=Usage)
     missing: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # أعلام على مستوى المقطع الواحد يضيفها المحرّك، بتنضم لأعلام
+    # الجودة عشان تظهر للمراجع: {segment_id: ["flag", ...]}
+    segment_flags: dict[str, list[str]] = field(default_factory=dict)
 
 
 class TranslationEngine(Protocol):
@@ -483,6 +486,22 @@ _NUMBER_RE = re.compile(
 )
 
 
+_WORD_RE = re.compile(r"[^\W\d_]+", re.UNICODE)
+
+
+def _adjacent_duplicate(text: str) -> bool:
+    """هل فيه كلمة مكرّرة مرتين ورا بعض؟
+
+    بنتجاهل الكلمات الطويلة لأن التكرار الحقيقي فيها نادر ومقصود
+    عادةً؛ العيب اللي بندوّر عليه بيحصل في حروف الجر والأدوات.
+    """
+    words = [w.lower() for w in _WORD_RE.findall(text)]
+    return any(
+        first == second and len(first) <= 4
+        for first, second in zip(words, words[1:])
+    )
+
+
 def validate_translation(
     source: str,
     target: str,
@@ -552,6 +571,17 @@ def validate_translation(
         elif script_ratio(plain, target_script) < 0.3 and len(plain) > 12:
             # مش بكتابة الهدف ولا المصدر — غالبًا رد غريب
             problems.append("wrong_script")
+
+    # كلمة مكرّرة مرتين ورا بعض في الهدف ومش مكرّرة في المصدر.
+    #
+    # ده العَرَض الأشهر لعيب في محرّكات الترجمة الآلية: بتترجم كل جزء
+    # موسوم بالتنسيق شبه مستقل، فحرف الجر اللي في آخر جزء بيتكرر في
+    # أول الجزء اللي بعده:
+    #   المصدر: <g1>signed in </g1><g2>Kyiv</g2>
+    #   المخرَج: <g1>подписано в </g1><g2>в Киеве</g2>   ← "в в"
+    # الفحص عام: مايفترضش لغة ولا محرّك.
+    if _adjacent_duplicate(plain_target) and not _adjacent_duplicate(plain_source):
+        problems.append("duplicated_word")
 
     # طول شاذ = مؤشّر حذف أو هلوسة
     source_len = len(strip_tags(source))

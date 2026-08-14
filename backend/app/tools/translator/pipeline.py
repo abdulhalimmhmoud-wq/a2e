@@ -417,6 +417,9 @@ def translate_file(
             if violations:
                 problems.append("glossary:" + " | ".join(violations[:3]))
 
+            # أعلام المحرّك نفسه (مثلًا: بسّط التنسيق عن قصد)
+            problems.extend(result.segment_flags.get(segment_id, []))
+
             segment.target_text = target
             segment.status = "translated"
             # المحرّكات التجريبية بتتعلّم عشان مخرجاتها ماتدخلش الذاكرة
