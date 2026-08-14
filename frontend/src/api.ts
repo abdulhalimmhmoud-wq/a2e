@@ -46,13 +46,23 @@ export interface LanguageInfo {
   rtl: boolean;
 }
 
+export interface EngineInfo {
+  id: string;
+  label: string;
+  available: boolean;
+  note: string;
+  pricing: string;
+}
+
 export interface AppConfig {
   models: ModelInfo[];
   domains: { id: string; label: string }[];
   languages: LanguageInfo[];
+  engines: EngineInfo[];
   default_model: string;
   legal_model: string;
   has_api_key: boolean;
+  has_deepl_key: boolean;
 }
 
 /** لغات تُكتب من اليمين لليسار — تُستخدم لضبط اتجاه العرض. */
@@ -68,6 +78,7 @@ export interface Project {
   source_lang: string;
   target_lang: string;
   domain: string;
+  engine: string;
   model: string;
   style_notes: string;
   status: string;
@@ -171,6 +182,9 @@ export interface Estimate {
     /** الوفر الفعلي للتنفيذ المؤجَّل — يتآكل كلما كبر الملف */
     batch_saving_pct: number;
     batches: number;
+    /** لـ DeepL فقط: عدد الحروف المحاسَبة */
+    chars?: number;
+    note?: string;
     cost_per_page: number;
     cost_per_word: number;
   }[];

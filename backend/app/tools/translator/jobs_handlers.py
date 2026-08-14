@@ -67,8 +67,18 @@ def run_translation(
         glossary=glossary,
     )
 
+    # "auto" معناه استخدم محرّك المشروع؛ الباقي بيتجاوزه لتشغيلة واحدة
+    if engine_name in ("auto", "", None):
+        engine_name = project.engine or "claude"
+
     if engine_name == "echo":
         engine = EchoEngine()
+    elif engine_name == "deepl":
+        from app.tools.translator.deepl_engine import DeepLEngine
+
+        # DeepL بيحدد جودته بـ model_type مش باسم موديل
+        options.pop("model", None)
+        engine = DeepLEngine(**options)
     elif engine_name == "batch":
         # نصف السعر، لكن التنفيذ مش فوري (عادة أقل من ساعة)
         engine = ClaudeBatchEngine(**options)

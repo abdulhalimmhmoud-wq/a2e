@@ -126,6 +126,7 @@ def estimate_project(
     reuse_ratio: float = 0.0,
     source_lang: str = "ar",
     target_lang: str = "en",
+    billable_chars: int | None = None,
 ) -> Estimate:
     """تقدير التكلفة قبل التشغيل — المستخدم يوافق قبل ما يتصرف قرش.
 
@@ -134,7 +135,7 @@ def estimate_project(
     models = models or [settings.default_model, settings.legal_model]
     billable = max(0.0, 1.0 - reuse_ratio)
 
-    billable_chars = chars * billable
+    billable_chars_est = chars * billable
 
     # كثافة التوكن بتختلف جذريًا بين اللغات: العربية ~0.42 توكن/حرف
     # والإنجليزية ~0.25. تقدير باتجاه واحد بيطلع غلط في الاتجاه التاني.
@@ -144,11 +145,11 @@ def estimate_project(
         (source_lang.split("-")[0], target_lang.split("-")[0]), 1.0
     )
 
-    content_in = int(billable_chars * source_density * _CONTEXT_OVERHEAD_RATIO)
-    content_out = int(billable_chars * expansion * target_density)
+    content_in = int(billable_chars_est * source_density * _CONTEXT_OVERHEAD_RATIO)
+    content_out = int(billable_chars_est * expansion * target_density)
 
     # عدد الدفعات بيحدد تكلفة التعليمات، وهي بند كبير في الفاتورة
-    batch_count = max(1, -(-int(billable_chars) // settings.batch_char_budget))
+    batch_count = max(1, -(-int(billable_chars_est) // settings.batch_char_budget))
     per_batch_in = content_in // batch_count
     per_batch_out = content_out // batch_count
 
@@ -201,6 +202,30 @@ def estimate_project(
                 "cost_per_word": round(realtime / words, 6) if words else 0.0,
             }
         )
+
+    # DeepL بيحاسب بحروف المصدر مش بالتوكن، فحسبته منفصلة تمامًا.
+    # محارف السياق مجانية عنده فمش داخلة في الحساب.
+    deepl_chars = (
+        billable_chars if billable_chars is not None else int(billable_chars_est)
+    )
+    deepl_cost = round(
+        deepl_chars * settings.deepl_usd_per_million_chars / 1_000_000, 6
+    )
+    options.append(
+        {
+            "model": "deepl",
+            "label": "DeepL",
+            "promo_active": False,
+            "cost_usd": deepl_cost,
+            "cost_usd_batch": deepl_cost,  # مفيش وضع مؤجَّل عند DeepL
+            "batch_saving_pct": 0.0,
+            "batches": 1,
+            "chars": deepl_chars,
+            "cost_per_page": round(deepl_cost / pages, 4) if pages else 0.0,
+            "cost_per_word": round(deepl_cost / words, 6) if words else 0.0,
+            "note": "أول 500 ألف حرف شهريًا مجانًا في الباقة المجانية",
+        }
+    )
 
     return Estimate(
         words=words,

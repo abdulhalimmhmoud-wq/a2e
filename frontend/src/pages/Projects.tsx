@@ -12,6 +12,7 @@ export default function Projects() {
     source_lang: "ar",
     target_lang: "en",
     domain: "legal",
+    engine: "claude",
     model: "claude-sonnet-5",
     style_notes: "",
   });
@@ -125,19 +126,50 @@ export default function Projects() {
               </select>
             </div>
 
-            <div className="field" style={{ flex: 1, minWidth: 180 }}>
-              <label>الموديل</label>
-              <select
-                value={form.model}
-                onChange={(e) => setForm({ ...form, model: e.target.value })}
-              >
-                {config?.models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label} — ${m.input_per_mtok}/${m.output_per_mtok} لكل مليون توكن
-                  </option>
-                ))}
-              </select>
+            {form.engine === "claude" && (
+              <div className="field" style={{ flex: 1, minWidth: 180 }}>
+                <label>الموديل</label>
+                <select
+                  value={form.model}
+                  onChange={(e) => setForm({ ...form, model: e.target.value })}
+                >
+                  {config?.models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label} — ${m.input_per_mtok}/${m.output_per_mtok} لكل مليون توكن
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div className="field">
+            <label>محرّك الترجمة</label>
+            <div className="row" style={{ gap: 10 }}>
+              {config?.engines.map((engine) => (
+                <button
+                  key={engine.id}
+                  type="button"
+                  className={`btn ${form.engine === engine.id ? "primary" : ""}`}
+                  style={{ flex: 1, minWidth: 190, textAlign: "start" }}
+                  disabled={!engine.available}
+                  onClick={() => setForm({ ...form, engine: engine.id })}
+                  title={
+                    engine.available
+                      ? engine.note
+                      : `محتاج مفتاح ${engine.label} في ملف .env`
+                  }
+                >
+                  <span style={{ display: "block" }}>
+                    <strong>{engine.label}</strong>
+                    {!engine.available && " (مفيش مفتاح)"}
+                  </span>
+                </button>
+              ))}
             </div>
+            <p className="muted" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
+              {config?.engines.find((e) => e.id === form.engine)?.note}
+            </p>
           </div>
 
           <div className="field">
@@ -175,6 +207,9 @@ export default function Projects() {
               <div className="row muted" style={{ fontSize: 12.5, gap: 14 }}>
                 <span className="mono">
                   {project.source_lang} → {project.target_lang}
+                </span>
+                <span className="badge">
+                  {project.engine === "deepl" ? "DeepL" : "Claude"}
                 </span>
                 <span>{project.file_count} ملف</span>
                 <span>{project.word_count.toLocaleString("ar-EG")} كلمة</span>

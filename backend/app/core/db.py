@@ -73,6 +73,7 @@ def _add_missing_columns() -> None:
     # (الجدول, العمود, تعريفه, تعبير التعبئة الرجعية)
     additions = [
         ("tm_entries", "source_length", "INTEGER DEFAULT 0", "LENGTH(source_text)"),
+        ("projects", "engine", "VARCHAR(20) DEFAULT 'claude'", "'claude'"),
     ]
 
     with engine.begin() as conn:

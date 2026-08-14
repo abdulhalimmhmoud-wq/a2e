@@ -155,6 +155,9 @@ export default function ProjectDetail() {
   if (!project) return <div className="empty">جارٍ التحميل…</div>;
 
   const hasKey = config?.has_api_key ?? false;
+  // زر «ترجمة» بيستخدم محرّك المشروع، فبنتأكد إن مفتاحه موجود
+  const engineReady =
+    config?.engines.find((e) => e.id === project.engine)?.available ?? hasKey;
   // الوفر الحقيقي للتنفيذ المؤجَّل بيتآكل كل ما الملف يكبر، لأن الوضع
   // الفوري بيستفيد من التخزين المؤقت والمؤجَّل لأ. بنعرض الرقم الفعلي.
   const batchSaving =
@@ -167,7 +170,9 @@ export default function ProjectDetail() {
         <div>
           <h1>{project.name}</h1>
           <p className="sub">
-            <Link to="/translator">المترجم</Link> · {project.domain} · {project.model}
+            <Link to="/translator">المترجم</Link> · {project.source_lang}→
+            {project.target_lang} · {project.domain} ·{" "}
+            {project.engine === "deepl" ? "DeepL" : project.model}
           </p>
         </div>
         <div className="row">
@@ -198,7 +203,7 @@ export default function ProjectDetail() {
       {editing && (
         <div className="card" style={{ marginBottom: 18 }}>
           <div className="row" style={{ alignItems: "flex-end" }}>
-            <div className="field" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
+            <div className="field" style={{ flex: 1, minWidth: 170, marginBottom: 0 }}>
               <label>المجال</label>
               <select
                 value={project.domain}
@@ -211,19 +216,35 @@ export default function ProjectDetail() {
                 ))}
               </select>
             </div>
-            <div className="field" style={{ flex: 1, minWidth: 220, marginBottom: 0 }}>
-              <label>الموديل</label>
+            <div className="field" style={{ flex: 1, minWidth: 150, marginBottom: 0 }}>
+              <label>المحرّك</label>
               <select
-                value={project.model}
-                onChange={(e) => saveSettings({ model: e.target.value })}
+                value={project.engine}
+                onChange={(e) => saveSettings({ engine: e.target.value })}
               >
-                {config?.models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
+                {config?.engines.map((e) => (
+                  <option key={e.id} value={e.id} disabled={!e.available}>
+                    {e.label}
+                    {!e.available && " (مفيش مفتاح)"}
                   </option>
                 ))}
               </select>
             </div>
+            {project.engine === "claude" && (
+              <div className="field" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
+                <label>الموديل</label>
+                <select
+                  value={project.model}
+                  onChange={(e) => saveSettings({ model: e.target.value })}
+                >
+                  {config?.models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="field" style={{ marginTop: 14, marginBottom: 0 }}>
@@ -403,11 +424,16 @@ export default function ProjectDetail() {
                           <>
                             <button
                               className="btn sm primary"
-                              disabled={running || !hasKey}
-                              onClick={() => translate(file, "claude")}
+                              disabled={running || !engineReady}
+                              onClick={() => translate(file, "auto")}
+                              title={`المحرّك: ${
+                                project.engine === "deepl" ? "DeepL" : project.model
+                              }`}
                             >
                               ترجمة
                             </button>
+                            {/* التنفيذ المؤجَّل خاص بـ Claude — DeepL مالوش وضع مجمّع */}
+                            {project.engine === "claude" && (
                             <button
                               className="btn sm"
                               disabled={running || !hasKey}
@@ -421,6 +447,7 @@ export default function ProjectDetail() {
                             >
                               تنفيذ مؤجَّل
                             </button>
+                            )}
                             <button
                               className="btn sm"
                               disabled={running}

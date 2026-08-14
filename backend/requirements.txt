@@ -20,6 +20,8 @@ lxml==5.3.0
 # --- Translation engine ---
 # لازم إصدار حديث: الإصدارات القديمة مابتعرفش thinking ولا output_config
 anthropic>=0.121.0
+# محرّك ترجمة بديل (اختياري — الأداة تشتغل من غيره)
+deepl>=1.32.0
 
 # --- Utilities ---
 python-dotenv==1.0.1

@@ -46,6 +46,16 @@ class Settings(BaseSettings):
     # عدد الكلمات المُفترض للصفحة عند غياب عدد صفحات حقيقي
     words_per_page: int = 250
 
+    # --- DeepL (محرّك بديل) ---
+    # المفتاح المنتهي بـ ":fx" معناه باقة مجانية، والمكتبة بتوجّه
+    # للخادم الصح تلقائيًا حسب الشكل ده.
+    deepl_api_key: str = ""
+    # quality_optimized | prefer_quality_optimized | latency_optimized
+    deepl_model_type: str = "quality_optimized"
+    # سعر DeepL بالدولار لكل مليون حرف. DeepL غيّرت باقاتها في 2026
+    # والسعر بيختلف حسب باقتك — عدّله من .env لما تعرف سعرك الفعلي.
+    deepl_usd_per_million_chars: float = 25.0
+
     @property
     def database_url(self) -> str:
         return f"sqlite:///{self.db_path}"

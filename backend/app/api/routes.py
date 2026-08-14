@@ -94,6 +94,7 @@ def _project_out(db: Session, project: Project) -> sc.ProjectOut:
         source_lang=project.source_lang,
         target_lang=project.target_lang,
         domain=project.domain,
+        engine=project.engine,
         model=project.model,
         style_notes=project.style_notes,
         status=project.status,
@@ -113,6 +114,7 @@ def health() -> dict:
         "ok": True,
         "app": settings.app_name,
         "has_api_key": bool(settings.anthropic_api_key),
+        "has_deepl_key": bool(settings.deepl_api_key),
         "supported_extensions": supported_extensions(),
     }
 
@@ -151,13 +153,33 @@ def config() -> dict:
         {"id": code, "label": language_label(code), "rtl": is_rtl(code)}
         for code in ("ar", "en", "fr", "de", "es", "tr")
     ]
+    engines = [
+        {
+            "id": "claude",
+            "label": "Claude",
+            "available": bool(settings.anthropic_api_key),
+            "note": "نموذج لغوي — يفهم تعليمات المجال والسياق والغموض المتعمّد. "
+                    "الأدق للمستندات القانونية والطبية.",
+            "pricing": "بالتوكن",
+        },
+        {
+            "id": "deepl",
+            "label": "DeepL",
+            "available": bool(settings.deepl_api_key),
+            "note": "ترجمة آلية متخصصة — أسرع بكتير وثابتة النتيجة، "
+                    "ومجانية حتى 500 ألف حرف شهريًا. تعليمات المجال مختصرة.",
+            "pricing": "بالحرف",
+        },
+    ]
     return {
         "models": models,
         "domains": [{"id": k, "label": v} for k, v in DOMAIN_LABELS.items()],
         "languages": languages,
+        "engines": engines,
         "default_model": settings.default_model,
         "legal_model": settings.legal_model,
         "has_api_key": bool(settings.anthropic_api_key),
+        "has_deepl_key": bool(settings.deepl_api_key),
     }
 
 
@@ -324,11 +346,23 @@ def start_translation(
 ):
     file = _file_or_404(db, file_id)
 
-    if payload.engine in ("claude", "batch") and not settings.anthropic_api_key:
+    # "auto" بيتحوّل لمحرّك المشروع قبل التحقق من المفتاح
+    project = db.get(Project, file.project_id)
+    wanted = payload.engine
+    if wanted in ("auto", ""):
+        wanted = (project.engine if project else "claude") or "claude"
+
+    if wanted in ("claude", "batch") and not settings.anthropic_api_key:
         raise HTTPException(
             400,
             "مفيش مفتاح Anthropic. حط ANTHROPIC_API_KEY في ملف .env، "
             "أو استخدم engine=echo لتشغيل تجريبي بدون تكلفة.",
+        )
+    if wanted == "deepl" and not settings.deepl_api_key:
+        raise HTTPException(
+            400,
+            "مفيش مفتاح DeepL. حط DEEPL_API_KEY في ملف .env — "
+            "المفتاح المجاني من deepl.com/pro-api بيكفي 500 ألف حرف شهريًا.",
         )
 
     if file.status not in ("extracted", "translated", "translating"):
@@ -762,6 +796,7 @@ def estimate(project_id: str, db: Session = Depends(get_db)):
         reuse_ratio=reuse,
         source_lang=project.source_lang,
         target_lang=project.target_lang,
+        billable_chars=int(chars * max(0.0, 1.0 - reuse)),
     )
     return {
         "words": result.words,

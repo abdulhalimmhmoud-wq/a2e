@@ -11,6 +11,7 @@ class ProjectCreate(BaseModel):
     source_lang: str = "ar"
     target_lang: str = "en"
     domain: str = "general"
+    engine: str = "claude"
     model: str = "claude-sonnet-5"
     style_notes: str = ""
 
@@ -18,6 +19,7 @@ class ProjectCreate(BaseModel):
 class ProjectUpdate(BaseModel):
     name: str | None = None
     domain: str | None = None
+    engine: str | None = None
     model: str | None = None
     style_notes: str | None = None
 
@@ -28,6 +30,7 @@ class ProjectOut(BaseModel):
     source_lang: str
     target_lang: str
     domain: str
+    engine: str
     model: str
     style_notes: str
     status: str
@@ -141,7 +144,8 @@ class EstimateRequest(BaseModel):
 
 
 class TranslateRequest(BaseModel):
-    # echo = تشغيل تجريبي بدون تكلفة ولا نداءات API
-    engine: str = "claude"
+    # auto  = محرّك المشروع | claude | deepl | batch
+    # echo  = تشغيل تجريبي بدون تكلفة ولا نداءات API
+    engine: str = "auto"
     model: str | None = None
     use_memory: bool = True

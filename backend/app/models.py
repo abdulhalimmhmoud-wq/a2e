@@ -40,6 +40,9 @@ class Project(Base):
     target_lang: Mapped[str] = mapped_column(String(10), default="en")
     # legal | scientific | medical | technical | general
     domain: Mapped[str] = mapped_column(String(30), default="general")
+    # المحرّك: claude (نموذج لغوي) | deepl (ترجمة آلية متخصصة)
+    engine: Mapped[str] = mapped_column(String(20), default="claude")
+    # يخصّ محرّك claude فقط؛ DeepL بيحدد جودته بـ model_type
     model: Mapped[str] = mapped_column(String(50), default="claude-sonnet-5")
     # ملاحظات أسلوبية يكتبها المستخدم وتُحقن في الـ system prompt
     style_notes: Mapped[str] = mapped_column(Text, default="")
