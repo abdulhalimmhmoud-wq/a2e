@@ -162,12 +162,21 @@ def _run_ocr(
             result.failed_pages[:10],
         )
 
+    # الشعارات والأختام والرسوم لازم توصل للمخرج مهما كانت صيغته.
+    # مسار Word كان بيبني الملف من النص بس، فكانت بتضيع كلها.
+    try:
+        images = ocr.embedded_images(source)
+    except Exception:  # noqa: BLE001
+        logger.warning("تعذّر استخراج صور %s", source.name)
+        images = {}
+
     target = work_dir / f"{source.stem}.ocr.docx"
     target, layout = ocr.build_docx(
         result,
         target,
         title="",
         source_lang=project.source_lang if project else "ar",
+        images_by_page=images,
     )
 
     # خريطة الصفحات بتتحفظ جنب ملف العمل. من غيرها التصدير مايعرفش
@@ -641,7 +650,7 @@ def assemble_units(db: Session, file: SourceFile) -> dict[str, str]:
     return {key: "".join(parts) for key, parts in units.items()}
 
 
-def export_file(db: Session, file: SourceFile) -> Path:
+def export_file(db: Session, file: SourceFile, fmt: str = "auto") -> Path:
     """كتابة الملف المترجم بنفس صيغة وتنسيق الأصل.
 
     اتجاه المستند بيتضبط حسب لغة الهدف: عربي→إنجليزي بيشيل خصائص
@@ -661,9 +670,16 @@ def export_file(db: Session, file: SourceFile) -> Path:
 
     # الملف اللي اتقرا ضوئيًا: بنكتب الترجمة على صفحاته الأصلية بدل
     # ما نبني ملفًا جديدًا، عشان الشعار والختم والإطار يفضلوا مكانهم.
-    overlay = _export_overlay(db, file, translations, target_lang, out_dir, stem)
-    if overlay is not None:
-        return overlay
+    #
+    # الصيغة اختيار المستخدم مش قرار الأداة: التصدير على الأصل بيحافظ
+    # على الشكل، وملف Word بيدّي نصًا قابلًا للتحرير بالكامل. الاتنين
+    # مطلوبين في مواقف مختلفة، فـ"auto" بس هي اللي بتخلينا نرجّح.
+    if fmt in ("auto", "pdf"):
+        overlay = _export_overlay(db, file, translations, target_lang, out_dir, stem)
+        if overlay is not None:
+            return overlay
+        if fmt == "pdf":
+            logger.info("التصدير على الأصل مش متاح للملف ده — هيطلع Word")
 
     extension = registry.output_extension(working_fmt)
     output = out_dir / f"{stem}.{target_lang}{extension}"

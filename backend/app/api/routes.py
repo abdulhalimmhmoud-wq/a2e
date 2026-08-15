@@ -420,13 +420,39 @@ def start_translation(
 
 
 @router.post("/files/{file_id}/export")
-def start_export(file_id: str, db: Session = Depends(get_db)):
+def start_export(
+    file_id: str,
+    fmt: str = "auto",
+    db: Session = Depends(get_db),
+):
+    """تصدير الملف المترجم.
+
+    fmt: auto | pdf | docx — التصدير على الأصل بيحافظ على الشكل،
+    وملف Word بيدّي نصًا قابلًا للتحرير. الاختيار للمستخدم.
+    """
+    if fmt not in ("auto", "pdf", "docx"):
+        raise HTTPException(400, "الصيغة لازم تكون auto أو pdf أو docx")
+
     file = _file_or_404(db, file_id)
-    output = pipeline.export_file(db, file)
+    output = pipeline.export_file(db, file, fmt=fmt)
+
+    # المقاطع اللي اتساب عمدًا لازم تتقال، مش تعدّي بصمت في المخرج
+    pending = db.execute(
+        select(func.count())
+        .select_from(Segment)
+        .where(
+            Segment.file_id == file.id,
+            Segment.is_translatable.is_(True),
+            func.trim(Segment.target_text) == "",
+        )
+    ).scalar_one()
+
     db.commit()
     return {
         "filename": output.name,
         "size_bytes": output.stat().st_size,
+        "format": output.suffix.lstrip("."),
+        "untranslated_segments": pending,
         "download_url": f"/api/files/{file_id}/download",
     }
 

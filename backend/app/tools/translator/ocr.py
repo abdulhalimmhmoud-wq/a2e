@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -158,6 +159,38 @@ def render_pages(path: Path, dpi: int = DEFAULT_DPI) -> list[bytes]:
         for page in document:
             images.append(render_page(page, dpi))
     return images
+
+
+# الصورة اللي بتغطي أكتر من النسبة دي من الصفحة هي **مسح الصفحة نفسه**
+# مش عنصر جواها. نقلها للمخرج بيكرر المحتوى ويطبع النص الأصلي تحت
+# الترجمة. اللي تحتها شعار أو ختم أو رسم — وده اللي بنشيله معانا.
+_PAGE_SCAN_COVERAGE = 0.55
+
+
+def embedded_images(path: Path) -> dict[int, list[bytes]]:
+    """الصور المضمَّنة في كل صفحة، من غير مسح الصفحة الكامل.
+
+    قاعدة عامة لأي مستند: العنصر المرئي اللي جوه الصفحة بيروح للمخرج
+    مهما كانت صيغته، والمسح الكامل لأ لأنه نسخة من المحتوى نفسه.
+    """
+    found: dict[int, list[bytes]] = {}
+    with fitz.open(str(path)) as document:
+        for index, page in enumerate(document, start=1):
+            area = abs(page.rect.width * page.rect.height) or 1.0
+            for info in page.get_images(full=True):
+                xref = info[0]
+                rects = page.get_image_rects(xref)
+                if rects and sum(abs(r.width * r.height) for r in rects) / area \
+                        > _PAGE_SCAN_COVERAGE:
+                    continue
+                try:
+                    pixmap = fitz.Pixmap(document, xref)
+                    if pixmap.n - pixmap.alpha >= 4:  # CMYK مش مدعوم في PNG
+                        pixmap = fitz.Pixmap(fitz.csRGB, pixmap)
+                    found.setdefault(index, []).append(pixmap.tobytes("png"))
+                except Exception:  # noqa: BLE001
+                    logger.debug("صورة مش قابلة للاستخراج في صفحة %d", index)
+    return found
 
 
 def _read_page(client, model: str, image: bytes, page_number: int) -> tuple[list[Block], Usage]:
@@ -312,6 +345,7 @@ def build_docx(
     output: Path,
     title: str = "",
     source_lang: str = "ar",
+    images_by_page: dict[int, list[bytes]] | None = None,
 ) -> tuple[Path, list[dict]]:
     """تحويل نتيجة القراءة لملف Word جاهز للترجمة.
 
@@ -352,11 +386,27 @@ def build_docx(
                 layout.append({"page": page, "text": cell.text, "kind": "cell"})
         pending_rows.clear()
 
+    images_by_page = images_by_page or {}
+    placed_images: set[int] = set()
+
+    def place_images(page: int) -> None:
+        """صور الصفحة بتتحط قبل نصّها — الشعار فوق الترويسة."""
+        from docx.shared import Inches
+
+        for data in images_by_page.get(page, []):
+            try:
+                document.add_picture(io.BytesIO(data), width=Inches(1.4))
+            except Exception:  # noqa: BLE001
+                logger.debug("صورة مش قابلة للإدراج في صفحة %d", page)
+        placed_images.add(page)
+
     current_page = 0
     for block in result.blocks:
         if block.page != current_page:
             flush_table()
             current_page = block.page
+            if current_page not in placed_images:
+                place_images(current_page)
 
         if block.kind == "table_row":
             if block.cells:
