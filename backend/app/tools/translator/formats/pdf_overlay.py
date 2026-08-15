@@ -124,7 +124,12 @@ def render(
             else:
                 replacements = _flow_into_page(page, texts)
 
-            placed = pdf_visual.cover_and_write(page, replacements)
+            # حجم واحد للصفحة كلها. من غيره كل صندوق بيحسب حجمه لوحده
+            # فالصفحة بتطلع بخطوط متضاربة — عنوان ضخم جنب فقرة مجهرية.
+            size = pdf_visual.uniform_size(replacements)
+            placed = pdf_visual.cover_and_write(
+                page, replacements, font_size=size
+            )
             result.units_placed += placed
             result.units_skipped += max(0, len(texts) - placed)
             result.pages_written += 1
@@ -171,24 +176,33 @@ def _flow_into_page(
 ) -> list[tuple[tuple[float, float, float, float], str]]:
     """صفحة ممسوحة بلا مقاطع نص: بنوزّع الترجمة على مساحة الكتابة.
 
-    مافيش مواضع أصلية نلتزم بيها، فبنقسّم المساحة المفيدة بالتساوي.
-    الصورة اللي تحت (الشعار والختم) مابتتلمسش لأن التغطية بتحصل
-    في حدود الصناديق دي بس.
+    التقسيم بالتساوي بيدّي إخراجًا مشوَّهًا: سطر «SUMMONS» بياخد نفس
+    ارتفاع فقرة من أربع أسطر، فيطلع بخط ضخم والفقرة تطلع مجهرية
+    وتفيض على اللي بعدها. الارتفاع هنا بيتوزّع **بنسبة طول النص**،
+    فكل كتلة بتاخد قد ما تحتاج.
+
+    الصورة اللي تحت (الشعار والختم) مابتتلمسش: التغطية بتحصل في حدود
+    الصناديق دي بس.
     """
-    rect = page.rect
-    margin_x = rect.width * 0.08
-    top = rect.height * 0.12
-    bottom = rect.height * 0.95
-    usable = bottom - top
     if not texts:
         return []
 
-    height = usable / len(texts)
-    return [
-        (
-            (margin_x, top + index * height,
-             rect.width - margin_x, top + (index + 1) * height),
-            text,
+    rect = page.rect
+    margin_x = rect.width * 0.08
+    top = rect.height * 0.12
+    usable = rect.height * 0.95 - top
+    width = rect.width - 2 * margin_x
+
+    # سطر قصير محتاج سطرًا واحدًا مهما قصر، والفقرة محتاجة بنسبة حروفها
+    weights = [max(1.0, len(text) / 60) for text in texts]
+    total = sum(weights)
+
+    boxes: list[tuple[tuple[float, float, float, float], str]] = []
+    cursor = top
+    for text, weight in zip(texts, weights):
+        height = usable * weight / total
+        boxes.append(
+            ((margin_x, cursor, margin_x + width, cursor + height), text)
         )
-        for index, text in enumerate(texts)
-    ]
+        cursor += height
+    return boxes

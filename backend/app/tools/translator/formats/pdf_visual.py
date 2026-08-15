@@ -206,12 +206,35 @@ def _fit_font_size(
         scratch.close()
 
 
+def uniform_size(
+    replacements: list[tuple[tuple[float, float, float, float], str]],
+    fontname: str = "helv",
+    ceiling: float = 14.0,
+) -> float:
+    """حجم خط واحد يدخل بيه **كل** النص في مساحاته.
+
+    الاشتقاق من ارتفاع الصندوق لوحده بيدّي إخراجًا عشوائيًا: سطر من
+    كلمتين في صندوق عالي بيطلع بخط ضخم، وفقرة كاملة في صندوق قصير
+    بتطلع مجهرية. الصفحة الواحدة المفروض يكون ليها حجم نص أساسي واحد.
+    """
+    size = ceiling
+    for bbox, text in replacements:
+        if not text.strip():
+            continue
+        rect = fitz.Rect(*bbox)
+        size = min(size, _fit_font_size(rect, text, fontname, size))
+        if size <= _MIN_FONT_SIZE:
+            break
+    return max(size, _MIN_FONT_SIZE)
+
+
 def cover_and_write(
     page,
     replacements: list[tuple[tuple[float, float, float, float], str]],
     fontname: str = "helv",
     rtl: bool = False,
     fill: tuple[float, float, float] | None = (1, 1, 1),
+    font_size: float | None = None,
 ) -> int:
     """تغطية مواضع النص القديم وكتابة الجديد مكانه.
 
@@ -257,9 +280,15 @@ def cover_and_write(
     for bbox, text in usable:
         rect = fitz.Rect(*bbox)
 
-        # المساحة المتاحة أوسع شوية من الأصل لتحمّل فرق طول الترجمة
-        target = fitz.Rect(rect.x0, rect.y0, rect.x1, rect.y1 + rect.height * 0.4)
-        size = _fit_font_size(target, text, fontname, max(rect.height * 0.8, 6))
+        # التمدد خارج الصندوق بيخلي النص يركب على اللي بعده. بنسمح
+        # بهامش صغير بس لتحمّل فرق طول الترجمة.
+        target = fitz.Rect(rect.x0, rect.y0, rect.x1, rect.y1 + rect.height * 0.1)
+
+        if font_size is not None:
+            # حجم موحّد للصفحة كلها، وبنصغّره لو مادخلش في صندوق بعينه
+            size = _fit_font_size(target, text, fontname, font_size)
+        else:
+            size = _fit_font_size(target, text, fontname, max(rect.height * 0.8, 6))
 
         overflow = page.insert_textbox(
             target,

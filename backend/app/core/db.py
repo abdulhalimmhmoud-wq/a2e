@@ -74,6 +74,7 @@ def _add_missing_columns() -> None:
     additions = [
         ("tm_entries", "source_length", "INTEGER DEFAULT 0", "LENGTH(source_text)"),
         ("projects", "engine", "VARCHAR(20) DEFAULT 'claude'", "'claude'"),
+        ("source_files", "meta", "TEXT DEFAULT '{}'", "'{}'"),
     ]
 
     with engine.begin() as conn:

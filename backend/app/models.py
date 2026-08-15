@@ -85,6 +85,9 @@ class SourceFile(Base):
     # pending | extracting | extracted | translating | translated | failed
     status: Mapped[str] = mapped_column(String(30), default="pending")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # بيانات التحضير (JSON): تشخيص الـ PDF، وخريطة الصفحات اللي
+    # التصدير بيحتاجها عشان يرجّع الترجمة لصفحتها الأصلية
+    meta: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     project: Mapped[Project] = relationship(back_populates="files")
