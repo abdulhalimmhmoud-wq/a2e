@@ -426,7 +426,14 @@ def detect(text: str) -> Detection:
             )
         )
 
-    # ---- 6) الحديث: التخريج أقوى دليل ----
+    # ---- 6) الحديث ----
+    #
+    # الترتيب هنا مهم: المقطع الواحد ممكن يحقق شروط النوعين — حديث فيه
+    # إحالة لسورة، أو خطبة فيها آية. لو النوعين اتسجّلوا، بيتبعت
+    # للمصدر الغلط (نص حديث بيتدوّر عليه في المصحف) ومابيتلاقاش.
+    #
+    # السند أقوى دليل على الإطلاق: «عن فلان عن النبي» تركيب خاص
+    # بالحديث ومستحيل يكون آية. فلو ظهر، بيلغي تصنيف القرآن.
     attribution = _has_any(normalized, _HADITH_ATTRIBUTION_PATTERNS)
     introduction = _has_any(normalized, _HADITH_INTRODUCER_PATTERNS)
     title = _has_any(normalized, _HADITH_TITLE_PATTERNS)
@@ -489,6 +496,12 @@ def detect(text: str) -> Detection:
                 reason="سند راوٍ (عن فلان رضي الله عنه)",
             )
         )
+
+    # السند تركيب خاص بالحديث: «عن فلان … عن النبي». لو ظهر مع تصنيف
+    # قرآني، القرآني هو الغلط — الآية مالهاش سند. من غير الترجيح ده
+    # نص الحديث بيتبعت لـquran.com ومابيتلاقاش، فيفضل بلا ترجمة.
+    if narrator and "hadith" in result.kinds and "quran" in result.kinds:
+        result.spans = [span for span in result.spans if span.kind != "quran"]
 
     return result
 

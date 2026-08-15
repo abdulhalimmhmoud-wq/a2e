@@ -754,7 +754,11 @@ def available_translations(language: str = "en"):
 
 
 @router.post("/files/{file_id}/sacred/resolve", response_model=sc.SacredResolveOut)
-def resolve_sacred(file_id: str, db: Session = Depends(get_db)):
+def resolve_sacred(
+    file_id: str,
+    fallback_to_engine: bool = True,
+    db: Session = Depends(get_db),
+):
     """جلب الترجمات المعتمدة للمقاطع المقفولة من المصادر الرسمية.
 
     الآيات بتتحدَّد على quran.com وبتتجاب بالترجمة المختارة. الأحاديث
@@ -879,12 +883,36 @@ def resolve_sacred(file_id: str, db: Session = Depends(get_db)):
             )
         )
 
+    # القاعدة: مفيش مقطع مقفول يفضل فاضي في المخرج.
+    #
+    # المصدر المعتمد هو الأصل، لكن لما يتعذّر — آية مالقيناهاش، أو
+    # حديث محتاج مفتاح sunnah.com — المقطع كان بيفضل بلا ترجمة
+    # فيطلع نص عربي وسط مستند إنجليزي من غير ما حد يعرف ليه.
+    #
+    # فبنفتح القفل عن اللي فشل عشان المحرّك يترجمه في التشغيلة الجاية،
+    # وبنعلّمه إن ترجمته **مش من مصدر معتمد**. كده الملف بيكمل ومصدر
+    # كل سطر بيفضل واضح.
+    released = 0
+    if fallback_to_engine:
+        for segment in segments:
+            if (segment.target_text or "").strip():
+                continue
+            segment.is_locked = False
+            flags = json.loads(segment.qa_flags or "[]")
+            if "unverified_rendering" not in flags:
+                flags.append("unverified_rendering")
+            segment.qa_flags = json.dumps(flags, ensure_ascii=False)
+            note = "مالقيناش ترجمة معتمدة — هيترجمه المحرّك، راجعه بنفسك"
+            segment.notes = f"{segment.notes} | {note}" if segment.notes else note
+            released += 1
+
     db.commit()
     return sc.SacredResolveOut(
         checked=len(segments),
         resolved=resolved,
         ambiguous=ambiguous,
         manual=manual,
+        released=released,
         translation_name=sources.translation_name(settings.quran_translation_id),
         items=results,
     )

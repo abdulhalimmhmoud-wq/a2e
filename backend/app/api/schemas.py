@@ -192,6 +192,8 @@ class SacredResolveOut(BaseModel):
     resolved: int = 0
     ambiguous: int = 0
     manual: int = 0
+    # اتفكّ قفلهم عشان المحرّك يترجمهم — مالقيناش لهم مصدر معتمد
+    released: int = 0
     translation_name: str = ""
     items: list[SacredResolutionOut] = []
 
