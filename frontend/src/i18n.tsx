@@ -386,6 +386,31 @@ const S = {
   },
   "review.unlock": { ar: "فتح القفل", en: "Unlock" },
   "review.lock": { ar: "قفل", en: "Lock" },
+  "sacred.fetch": { ar: "جلب الترجمات المعتمدة", en: "Fetch approved renderings" },
+  "sacred.fetching": { ar: "جارٍ الجلب…", en: "Fetching…" },
+  "sacred.summary": {
+    ar: "من {checked} مقطع مقفول: {resolved} اتجابت · {ambiguous} محتاجة تحديد · {manual} يدويًا",
+    en: "Of {checked} locked segment(s): {resolved} fetched · {ambiguous} need a choice · {manual} manual",
+  },
+  "sacred.using": { ar: "الترجمة المستخدَمة: {name}", en: "Rendering used: {name}" },
+  "sacred.rights": {
+    ar: "الترجمة بتتجاب من مصدرها وقت الطلب ومابتتخزّنش في ذاكرتك. لو هتنشر المستند، اتأكد إن حقوق الترجمة دي مسموح بيها عندك.",
+    en: "Renderings are fetched from the source on request and are not stored in your memory. If you publish the document, check that the rights to this rendering allow it.",
+  },
+  "sacred.ambiguous": {
+    ar: "النص موجود في أكتر من موضع ({refs}) — حدّد الموضع بنفسك",
+    en: "This text occurs in more than one place ({refs}) — choose the right one",
+  },
+  "sacred.notFound": { ar: "مالقيناهاش — راجعها بنفسك", en: "Not found — check it yourself" },
+  "sacred.manual": {
+    ar: "محتاجة نقل يدوي — افتح المصدر وانسخ الترجمة المعتمدة",
+    en: "Needs manual copying — open the source and paste the approved rendering",
+  },
+  "sacred.openSource": { ar: "فتح المصدر", en: "Open source" },
+  "sacred.noLocked": {
+    ar: "مفيش مقاطع مقفولة في الملف ده.",
+    en: "No locked segments in this file.",
+  },
   "file.sacredFound": {
     ar: "{locked} مقطع مقفول (آيات/أحاديث) · {flagged} مقطع يحتاج تدقيقًا",
     en: "{locked} locked segment(s) (Quran/Hadith) · {flagged} need checking",

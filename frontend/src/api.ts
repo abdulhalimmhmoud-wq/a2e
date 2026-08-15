@@ -236,6 +236,28 @@ export interface Extraction {
   warnings: string[];
 }
 
+export interface SacredResolution {
+  segment_id: string;
+  kind: "quran" | "hadith";
+  /** resolved = اتجابت · ambiguous = أكتر من موضع · not_found · manual */
+  status: string;
+  reference: string;
+  text: string;
+  /** اسم الترجمة والمصدر — لازم يبان في مستندك */
+  attribution: string;
+  note: string;
+  url: string;
+}
+
+export interface SacredResolve {
+  checked: number;
+  resolved: number;
+  ambiguous: number;
+  manual: number;
+  translation_name: string;
+  items: SacredResolution[];
+}
+
 export interface GlossaryTerm {
   id: string;
   source_term: string;
@@ -324,6 +346,16 @@ export const api = {
     }),
   approveAll: (fileId: string) =>
     request<{ approved: number }>(`/files/${fileId}/approve-all`, { method: "POST" }),
+
+  /** جلب الترجمات المعتمدة للآيات والأحاديث من مصادرها الرسمية */
+  resolveSacred: (fileId: string) =>
+    request<SacredResolve>(`/files/${fileId}/sacred/resolve`, { method: "POST" }),
+  sourceTranslations: () =>
+    request<{
+      current: number;
+      has_sunnah_key: boolean;
+      translations: { id: number; name: string; author: string }[];
+    }>("/sources/translations"),
 
   estimate: (projectId: string) => request<Estimate>(`/projects/${projectId}/estimate`),
   cost: (projectId: string) => request<CostReport>(`/projects/${projectId}/cost`),

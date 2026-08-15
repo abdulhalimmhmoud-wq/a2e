@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import shutil
 import tempfile
 from pathlib import Path
@@ -26,12 +27,15 @@ from app.models import (
     TMEntry,
     UsageRecord,
 )
-from app.tools.translator import jobs_handlers, pipeline, terms, tm
+from app.tools.translator import jobs_handlers, pipeline, sacred, sources, terms, tm
 from app.tools.translator.costing import estimate_project, rates_for
+from app.tools.translator.formats.base import strip_tags
 from app.tools.translator.formats.registry import UnsupportedFormat, supported_extensions
 from app.tools.translator.langs import is_rtl, language_label
 from app.tools.translator.prompts import DOMAIN_LABELS
 from app import jobs as job_queue
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
@@ -722,6 +726,168 @@ def approve_all(file_id: str, db: Session = Depends(get_db)):
         pipeline.approve_segment(db, segment)
     db.commit()
     return {"approved": len(segments)}
+
+
+# ---------------------------------------------------------------------------
+# المصادر المعتمدة للنص المقدّس
+# ---------------------------------------------------------------------------
+@router.get("/sources/translations")
+def available_translations(language: str = "en"):
+    """الترجمات المتاحة على quran.com عشان المستخدم يختار واحدة."""
+    try:
+        items = sources.list_translations(language)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, f"تعذّر الاتصال بـ quran.com: {exc}") from exc
+
+    return {
+        "current": settings.quran_translation_id,
+        "has_sunnah_key": bool(settings.sunnah_api_key),
+        "translations": [
+            {
+                "id": item["id"],
+                "name": item.get("name", ""),
+                "author": item.get("author_name", ""),
+            }
+            for item in items
+        ],
+    }
+
+
+@router.post("/files/{file_id}/sacred/resolve", response_model=sc.SacredResolveOut)
+def resolve_sacred(file_id: str, db: Session = Depends(get_db)):
+    """جلب الترجمات المعتمدة للمقاطع المقفولة من المصادر الرسمية.
+
+    الآيات بتتحدَّد على quran.com وبتتجاب بالترجمة المختارة. الأحاديث
+    محتاجة مفتاح sunnah.com؛ من غيره بيترجّع رابط بحث للمراجع.
+
+    المقاطع بتفضل **مقفولة وغير معتمدة**: النقل من مصدر خارجي مش
+    اعتماد، والمراجع لازم يشوف الإسناد ويوافق بنفسه.
+    """
+    file = _file_or_404(db, file_id)
+    segments = db.execute(
+        select(Segment)
+        .where(Segment.file_id == file.id, Segment.is_locked.is_(True))
+        .order_by(Segment.order_index)
+    ).scalars().all()
+
+    results: list[sc.SacredResolutionOut] = []
+    resolved = ambiguous = manual = 0
+
+    for segment in segments:
+        flags = json.loads(segment.qa_flags or "[]")
+        is_quran = any(flag.startswith("quran") for flag in flags)
+        plain = strip_tags(segment.source_text)
+
+        # المقطع بيحتوي التمهيد والتخريج مع النص المقدّس: «قال تعالى:
+        # ﴿…﴾». البحث بالجملة كلها بيفشل لأن التمهيد مش من الآية،
+        # فبنستخدم المدى اللي الكاشف حدّده بالظبط.
+        detection = sacred.detect(plain)
+        kind = "quran" if is_quran else "hadith"
+        spans = [s for s in detection.spans if s.kind == kind]
+        needle = spans[0].text if spans else plain
+
+        if is_quran:
+            try:
+                match = sources.find_verse(needle)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("تحديد الآية فشل: %s", exc)
+                match = None
+
+            if match is None:
+                manual += 1
+                results.append(
+                    sc.SacredResolutionOut(
+                        segment_id=segment.id,
+                        kind="quran",
+                        status="not_found",
+                        note="مالقيناش الآية — راجعها بنفسك على quran.com",
+                        url="https://quran.com",
+                    )
+                )
+                continue
+
+            if match.ambiguous:
+                ambiguous += 1
+                results.append(
+                    sc.SacredResolutionOut(
+                        segment_id=segment.id,
+                        kind="quran",
+                        status="ambiguous",
+                        reference="، ".join(match.candidates),
+                        note=match.note,
+                        url=match.url,
+                    )
+                )
+                continue
+
+            # الإسناد بيتكتب مع المقطع — لازم يبان في مستندك وتعرف
+            # النص جاي منين
+            attribution = (
+                f"{match.translation_name} · quran.com/{match.verse_key}"
+            )
+            segment.target_text = match.translation
+            segment.origin = "source"
+            segment.notes = (
+                f"{segment.notes} | {attribution}" if segment.notes else attribution
+            )
+            if match.note:
+                segment.notes += f" · {match.note}"
+            resolved += 1
+            results.append(
+                sc.SacredResolutionOut(
+                    segment_id=segment.id,
+                    kind="quran",
+                    status="resolved",
+                    reference=match.verse_key,
+                    text=match.translation,
+                    attribution=attribution,
+                    note=match.note,
+                    url=match.url,
+                )
+            )
+            continue
+
+        # ---- حديث ----
+        lead = sources.search_hadith(needle)
+        if lead.available and lead.text:
+            attribution = f"sunnah.com · {lead.collection} {lead.reference}".strip()
+            segment.target_text = lead.text
+            segment.origin = "source"
+            segment.notes = (
+                f"{segment.notes} | {attribution}" if segment.notes else attribution
+            )
+            resolved += 1
+            status = "resolved"
+        else:
+            manual += 1
+            status = "manual"
+
+        results.append(
+            sc.SacredResolutionOut(
+                segment_id=segment.id,
+                kind="hadith",
+                status=status,
+                reference=lead.reference,
+                text=lead.text,
+                attribution=(
+                    f"sunnah.com · {lead.collection} {lead.reference}".strip()
+                    if lead.available
+                    else ""
+                ),
+                note=lead.note,
+                url=lead.search_url,
+            )
+        )
+
+    db.commit()
+    return sc.SacredResolveOut(
+        checked=len(segments),
+        resolved=resolved,
+        ambiguous=ambiguous,
+        manual=manual,
+        translation_name=sources.translation_name(settings.quran_translation_id),
+        items=results,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -664,6 +664,12 @@ def approve_segment(db: Session, segment: Segment, save_to_memory: bool = True) 
     if segment.origin == "echo" or segment.engine_model == "echo":
         return
 
+    # الترجمات المنقولة من مصدر خارجي (ترجمة قرآن منشورة) مش شغلك،
+    # فمالهاش تتخزّن في ذاكرتك وتتعاد في مشاريع تانية كأنها ترجمتك.
+    # المصدر بيتجاب من عنده كل مرة بإسناده.
+    if segment.origin == "source":
+        return
+
     if save_to_memory and segment.target_text.strip():
         tm.store(
             db,

@@ -173,6 +173,29 @@ class BulkTermsIn(BaseModel):
     terms: list[GlossaryTermIn]
 
 
+class SacredResolutionOut(BaseModel):
+    """نتيجة محاولة جلب ترجمة معتمدة لمقطع مقفول."""
+
+    segment_id: str
+    kind: str                      # quran | hadith
+    # resolved | ambiguous | not_found | manual
+    status: str
+    reference: str = ""            # 2:275 أو رقم الحديث
+    text: str = ""
+    attribution: str = ""          # اسم الترجمة والمصدر
+    note: str = ""
+    url: str = ""
+
+
+class SacredResolveOut(BaseModel):
+    checked: int = 0
+    resolved: int = 0
+    ambiguous: int = 0
+    manual: int = 0
+    translation_name: str = ""
+    items: list[SacredResolutionOut] = []
+
+
 class EstimateRequest(BaseModel):
     models: list[str] | None = None
 

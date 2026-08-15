@@ -5,6 +5,7 @@ import {
   isRtl,
   type Project,
   type PropagationPlan,
+  type SacredResolve,
   type Segment,
   type SourceFile,
 } from "../api";
@@ -46,6 +47,8 @@ export default function Review() {
     Record<string, { source_text: string; target_text: string; score: number }[]>
   >({});
   const drafts = useRef<Record<string, string>>({});
+  const [sacred, setSacred] = useState<SacredResolve | null>(null);
+  const [fetchingSacred, setFetchingSacred] = useState(false);
 
   /** ترجمة علم الجودة — بعضها يحمل تفاصيل بعد النقطتين. */
   const flagLabel = (flag: string) => {
@@ -148,7 +151,23 @@ export default function Review() {
     load(0);
   };
 
+  /** جلب الترجمات المعتمدة للآيات والأحاديث من مصادرها الرسمية.
+   *  المقاطع بتفضل مقفولة وغير معتمدة — النقل مش اعتماد. */
+  const fetchSacred = async () => {
+    setFetchingSacred(true);
+    setError("");
+    try {
+      setSacred(await api.resolveSacred(fileId));
+      load(0);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setFetchingSacred(false);
+    }
+  };
+
   const stats = file?.progress;
+  const lockedCount = segments.filter((s) => s.is_locked).length;
   const sourceName = localName(LANGUAGE_NAMES, project?.source_lang ?? "ar", lang);
   const targetName = localName(LANGUAGE_NAMES, project?.target_lang ?? "en", lang);
 
@@ -169,6 +188,15 @@ export default function Review() {
           </p>
         </div>
         <div className="row">
+          {lockedCount > 0 && (
+            <button
+              className="btn"
+              disabled={fetchingSacred}
+              onClick={fetchSacred}
+            >
+              {fetchingSacred ? t("sacred.fetching") : t("sacred.fetch")}
+            </button>
+          )}
           <button className="btn" onClick={approveAll}>
             {t("review.approveAll")}
           </button>
@@ -179,6 +207,64 @@ export default function Review() {
       </div>
 
       {error && <div className="error-box">{error}</div>}
+
+      {sacred && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <div className="row" style={{ marginBottom: 8 }}>
+            <strong>
+              {t("sacred.summary", {
+                checked: sacred.checked,
+                resolved: sacred.resolved,
+                ambiguous: sacred.ambiguous,
+                manual: sacred.manual,
+              })}
+            </strong>
+            <div className="spacer" />
+            <button className="btn sm" onClick={() => setSacred(null)}>
+              {t("common.cancel")}
+            </button>
+          </div>
+          {sacred.translation_name && (
+            <div className="muted" style={{ fontSize: 12.5 }}>
+              {t("sacred.using", { name: sacred.translation_name })}
+            </div>
+          )}
+          <div className="notice" style={{ fontSize: 12, marginTop: 8 }}>
+            {t("sacred.rights")}
+          </div>
+
+          {sacred.items
+            .filter((item) => item.status !== "resolved")
+            .map((item) => (
+              <div key={item.segment_id} className="prop-item">
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div className="row" style={{ gap: 8 }}>
+                    <span className="badge warn">
+                      {item.status === "ambiguous"
+                        ? t("sacred.ambiguous", { refs: item.reference })
+                        : item.status === "not_found"
+                        ? t("sacred.notFound")
+                        : t("sacred.manual")}
+                    </span>
+                    <a
+                      className="btn sm"
+                      href={item.url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {t("sacred.openSource")}
+                    </a>
+                  </div>
+                  {item.note && (
+                    <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>
+                      {item.note}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
       {toast && (
         <div className="notice" style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>
           {toast}
