@@ -83,6 +83,51 @@ def detect_lines(
     return boxes
 
 
+def merge_lines(
+    boxes: list[tuple[float, float, float, float]],
+    gap_factor: float = 0.8,
+    overlap_ratio: float = 0.25,
+) -> list[tuple[float, float, float, float]]:
+    """دمج السطور المتلاصقة في كتل.
+
+    الكشف بيرجّع **سطورًا**، والترجمة بتيجي **فقرات**. لو حطّينا كل
+    فقرة في سطر واحد، حجم الخط بيتحدد بأصغر سطر وتطلع الصفحة كلها
+    بخط مجهري — وده اللي حصل أول ما جرّبت الربط.
+
+    فبنجمّع السطور اللي فوق بعض ومتقاربة رأسيًا في كتلة واحدة، زي ما
+    العين بتقراها فقرة. الكتلة بتدّي مساحة معقولة للنص المترجَم.
+
+    المسافة المسموحة بتتقاس بنسبة **لارتفاع السطر نفسه** مش برقم ثابت،
+    عشان تشتغل على أي مقاس صفحة وأي حجم خط.
+    """
+    if not boxes:
+        return []
+
+    ordered = sorted(boxes, key=lambda b: (b[1], b[0]))
+    heights = sorted(b[3] - b[1] for b in ordered)
+    typical = heights[len(heights) // 2] or 1.0
+    max_gap = typical * gap_factor
+
+    blocks: list[list[float]] = [list(ordered[0])]
+    for box in ordered[1:]:
+        current = blocks[-1]
+        gap = box[1] - current[3]
+
+        width = min(current[2], box[2]) - max(current[0], box[0])
+        span = min(current[2] - current[0], box[2] - box[0]) or 1.0
+        aligned = width / span >= overlap_ratio
+
+        if gap <= max_gap and aligned:
+            current[0] = min(current[0], box[0])
+            current[1] = min(current[1], box[1])
+            current[2] = max(current[2], box[2])
+            current[3] = max(current[3], box[3])
+        else:
+            blocks.append(list(box))
+
+    return [tuple(block) for block in blocks]  # type: ignore[misc]
+
+
 def available() -> bool:
     """هل الكشف البصري متاح على الجهاز ده؟"""
     return _get_predictor() is not None

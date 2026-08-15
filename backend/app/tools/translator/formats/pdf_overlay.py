@@ -161,14 +161,16 @@ def render(
             # بنكتب الترجمة في المساحة المخصصة للنص وسايبين الصورة تحتها.
             lines = [line for line in geometry.lines if line.text.strip()]
 
-            # الكشف البصري (line_detect) بيدّي مواضع السطور الحقيقية،
-            # لكن ربطه لسه ناقص: السطور المكتشَفة كتير وصغيرة، والحجم
-            # الموحّد بيتحدد بأصغرها فالصفحة كلها بتطلع بخط مجهري.
-            # لحد ما دمج السطور في كتل يتظبط، التوزيع التقديري أوضح.
             if lines:
                 replacements = _match_lines(lines, texts)
             else:
-                replacements = _flow_into_page(page, texts)
+                # صفحة ممسوحة: المواضع بتتكشف بصريًا وبتتجمّع في كتل.
+                # التوزيع التقديري آخر حل مش أول حل.
+                blocks = _detected_blocks(page)
+                replacements = (
+                    _match_boxes(blocks, texts) if blocks
+                    else _flow_into_page(page, texts)
+                )
 
             # حجم واحد للصفحة كلها. من غيره كل صندوق بيحسب حجمه لوحده
             # فالصفحة بتطلع بخطوط متضاربة — عنوان ضخم جنب فقرة مجهرية.
@@ -191,8 +193,13 @@ def render(
     return result
 
 
-def _detected_boxes(page) -> list[tuple[float, float, float, float]]:
-    """مواضع السطور في صفحة ممسوحة، بالكشف البصري."""
+def _detected_blocks(page) -> list[tuple[float, float, float, float]]:
+    """كتل النص في صفحة ممسوحة، بالكشف البصري.
+
+    الكشف بيرجّع سطورًا مفردة؛ الدمج بيحوّلها لكتل بحجم الفقرة. من
+    غير الدمج، الحجم الموحّد للصفحة بيتحدد بأصغر سطر والصفحة كلها
+    بتطلع بخط مجهري.
+    """
     from app.tools.translator.formats import line_detect
 
     try:
@@ -201,10 +208,13 @@ def _detected_boxes(page) -> list[tuple[float, float, float, float]]:
         logger.warning("رسم الصفحة للكشف فشل: %s", exc)
         return []
 
-    boxes = line_detect.detect_lines(
-        image, page.rect.width, page.rect.height
-    )
-    return boxes or []
+    boxes = line_detect.detect_lines(image, page.rect.width, page.rect.height)
+    if not boxes:
+        return []
+
+    blocks = line_detect.merge_lines(boxes)
+    logger.info("كشف بصري: %d سطر → %d كتلة", len(boxes), len(blocks))
+    return blocks
 
 
 def _match_boxes(
