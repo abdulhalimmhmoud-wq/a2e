@@ -390,12 +390,19 @@ def build_docx(
     placed_images: set[int] = set()
 
     def place_images(page: int) -> None:
-        """صور الصفحة بتتحط قبل نصّها — الشعار فوق الترويسة."""
+        """صور الصفحة بتتحط قبل نصّها — الشعار فوق الترويسة.
+
+        كل صورة بتتسجّل في الخريطة زي أي عنصر تاني. الخريطة بتربط
+        وحدات المستند بصفحاتها **بالترتيب**، والاستخراج بيمشي على
+        الملف عنصرًا عنصرًا — فأي حاجة بتتضاف من غير ما تتسجّل
+        بتزحلق كل اللي بعدها.
+        """
         from docx.shared import Inches
 
         for data in images_by_page.get(page, []):
             try:
                 document.add_picture(io.BytesIO(data), width=Inches(1.4))
+                layout.append({"page": page, "text": "", "kind": "image"})
             except Exception:  # noqa: BLE001
                 logger.debug("صورة مش قابلة للإدراج في صفحة %d", page)
         placed_images.add(page)

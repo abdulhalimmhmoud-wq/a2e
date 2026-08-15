@@ -258,7 +258,18 @@ def pick_font(text: str) -> tuple[str, str | None] | None:
     السؤال الحقيقي مش عن اللغة — هو عن قدرة الخط على المحارف، وده
     بيتحدد بتجربة. أي لغة تدخل المشروع بعد كده بتتحكم بنفس القاعدة.
     """
-    sample = " ".join(text.split())[:120]
+    # القص لازم يكون على حدود الكلمات: القطع في نص كلمة بيسيب جزءًا
+    # مابيرجعش زي ما اتكتب، فالمقارنة بتفشل ويترفض كل خط — حتى للنص
+    # اللاتيني اللي الخط الأساسي شايله من غير أي مشكلة.
+    words = text.split()
+    sample = ""
+    for word in words:
+        candidate = f"{sample} {word}".strip()
+        if len(candidate) > 120:
+            break
+        sample = candidate
+    if not sample:
+        sample = words[0][:120] if words else ""
     if not sample:
         return _FONT_CANDIDATES[0]
 

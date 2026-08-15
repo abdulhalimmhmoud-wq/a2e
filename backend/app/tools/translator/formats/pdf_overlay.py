@@ -161,6 +161,10 @@ def render(
             # بنكتب الترجمة في المساحة المخصصة للنص وسايبين الصورة تحتها.
             lines = [line for line in geometry.lines if line.text.strip()]
 
+            # الكشف البصري (line_detect) بيدّي مواضع السطور الحقيقية،
+            # لكن ربطه لسه ناقص: السطور المكتشَفة كتير وصغيرة، والحجم
+            # الموحّد بيتحدد بأصغرها فالصفحة كلها بتطلع بخط مجهري.
+            # لحد ما دمج السطور في كتل يتظبط، التوزيع التقديري أوضح.
             if lines:
                 replacements = _match_lines(lines, texts)
             else:
@@ -185,6 +189,56 @@ def render(
         document.close()
 
     return result
+
+
+def _detected_boxes(page) -> list[tuple[float, float, float, float]]:
+    """مواضع السطور في صفحة ممسوحة، بالكشف البصري."""
+    from app.tools.translator.formats import line_detect
+
+    try:
+        image = pdf_visual.page_image(page)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("رسم الصفحة للكشف فشل: %s", exc)
+        return []
+
+    boxes = line_detect.detect_lines(
+        image, page.rect.width, page.rect.height
+    )
+    return boxes or []
+
+
+def _match_boxes(
+    boxes: list[tuple[float, float, float, float]], texts: list[str]
+) -> list[tuple[tuple[float, float, float, float], str]]:
+    """توزيع الترجمات على مواضع مكتشَفة.
+
+    الكشف بيرجّع سطورًا، والقراءة بترجّع فقرات — فالأعداد مختلفة
+    بطبيعتها. بندمج السطور المتلاصقة في كتل بعدد الترجمات عشان كل
+    ترجمة تاخد مساحة متصلة بدل ما تتحشر في سطر واحد.
+    """
+    if not boxes or not texts:
+        return []
+
+    if len(texts) >= len(boxes):
+        return _match_lines(
+            [pdf_visual.TextSpan(text="x", bbox=box) for box in boxes], texts
+        )
+
+    # كل ترجمة بتاخد نصيبها من السطور، وصندوقها اتحاد صناديقهم
+    per = len(boxes) / len(texts)
+    replacements: list[tuple[tuple[float, float, float, float], str]] = []
+    for index, text in enumerate(texts):
+        chunk = boxes[round(index * per):round((index + 1) * per)] or [boxes[-1]]
+        replacements.append((
+            (
+                min(b[0] for b in chunk),
+                min(b[1] for b in chunk),
+                max(b[2] for b in chunk),
+                max(b[3] for b in chunk),
+            ),
+            text,
+        ))
+    return replacements
 
 
 def _match_lines(
