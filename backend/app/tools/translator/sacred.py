@@ -275,6 +275,29 @@ def _has_any(
     return best
 
 
+def _is_citation_only(text: str) -> bool:
+    """هل المقطع حاشية تخريج بحتة من غير نص حديث؟
+
+    الحواشي في الكتب الشرعية شكلها «(١) أخرجه البخاري (٧٩)، ومسلم
+    (٢٢٨٢).» — أسماء مخرّجين وأرقام وعلامات ترقيم. النص المقدّس نفسه
+    مش موجود فيها، فقفلها بيمنع ترجمة مرجع عادي.
+
+    بنشيل عبارات التخريج وأسماء الكتب والأرقام، ونشوف الباقي: لو فضل
+    كلام قليل يبقى إحالة مش حديث.
+    """
+    remainder = text
+    for phrases in (_HADITH_ATTRIBUTIONS, _HADITH_SOURCE_TITLES):
+        for phrase in phrases:
+            remainder = remainder.replace(phrase, " ")
+
+    # الأرقام (عربية وهندية) وعلامات الترقيم مش كلام
+    remainder = re.sub(r"[\d٠-٩]+", " ", remainder)
+    remainder = re.sub(r"[^ء-ي\s]", " ", remainder)
+
+    words = [word for word in remainder.split() if len(word) > 1]
+    return len(words) <= 3
+
+
 def _citation_surah(text: str) -> str | None:
     """اسم السورة لو النص فيه إحالة زي [البقرة: 255]."""
     for match in _CITATION.finditer(text):
@@ -408,6 +431,19 @@ def detect(text: str) -> Detection:
     introduction = _has_any(normalized, _HADITH_INTRODUCER_PATTERNS)
     title = _has_any(normalized, _HADITH_TITLE_PATTERNS)
     narrator = _NARRATOR_PATTERN.search(normalized)
+
+    # حاشية تخريج زي «(١) أخرجه البخاري (٧٩)، ومسلم (٢٢٨٢).» فيها
+    # التخريج من غير نص الحديث. قفلها بيمنع ترجمتها بلا سبب — مافيش
+    # فيها نص مقدّس أصلًا، دي إحالة مرجعية.
+    if attribution and not introduction and _is_citation_only(normalized):
+        result.spans.append(
+            SacredSpan(
+                kind="hadith", confidence="likely", text=normalized,
+                start=0, end=len(normalized),
+                reason=f"حاشية تخريج «{attribution[0]}» بدون نص حديث",
+            )
+        )
+        return result
 
     if attribution or introduction:
         # بندوّر على الاقتباس بعد التمهيد، وإلا فبعد التخريج
