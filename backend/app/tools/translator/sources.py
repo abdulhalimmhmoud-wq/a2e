@@ -295,57 +295,120 @@ def _strip_html(text: str) -> str:
 # ---------------------------------------------------------------------------
 # sunnah.com
 # ---------------------------------------------------------------------------
-def search_hadith(arabic_text: str) -> HadithLead:
-    """البحث عن حديث على sunnah.com.
+# أسماء المخرّجين بالعربي ومقابلها على sunnah.com
+_COLLECTIONS: list[tuple[str, str]] = [
+    ("البخاري", "bukhari"),
+    ("مسلم", "muslim"),
+    ("الترمذي", "tirmidhi"),
+    ("أبي داود", "abudawud"),
+    ("أبو داود", "abudawud"),
+    ("النسائي", "nasai"),
+    ("ابن ماجه", "ibnmajah"),
+    ("ابن ماجة", "ibnmajah"),
+    ("أحمد", "ahmad"),
+    ("مالك", "malik"),
+    ("الموطأ", "malik"),
+    ("الدارمي", "darimi"),
+]
 
-    الواجهة البرمجية بتاعتهم محتاجة مفتاح (بيتطلب منهم). من غير مفتاح
-    بنرجّع رابط بحث جاهز — أنفع للمراجع من رسالة خطأ، وبيوصله لنص
-    الحديث وترجمته المعتمدة على طول.
+_ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+
+# «أخرجه البخاري (٧٩)» — الاسم وبعده الرقم بين قوسين
+_REFERENCE = re.compile(r"([ء-ي\s]{3,20}?)\s*[\(\[]\s*([\d٠-٩]+)\s*[\)\]]")
+
+
+def citations(arabic_text: str) -> list[tuple[str, str]]:
+    """الإحالات المذكورة في النص: (المجموعة، رقم الحديث).
+
+    الكتب الشرعية بتخرّج أحاديثها بالاسم والرقم — «أخرجه البخاري
+    (٧٩)، ومسلم (٢٢٨٢)». ودي أدق بكتير من البحث بالنص: المستند نفسه
+    بيقول المرجع بالظبط، فمفيش تخمين ولا احتمال نجيب حديثًا تاني.
     """
-    query = plain_arabic(arabic_text)
-    # أول عشر كلمات كافية للبحث، والزيادة بتضيّق النتيجة لدرجة الصفر
-    short = " ".join(query.split()[:10])
-    search_url = f"{SUNNAH_SITE}/search?q={requests.utils.quote(short)}"
+    found: list[tuple[str, str]] = []
+    for label, number in _REFERENCE.findall(arabic_text):
+        digits = number.translate(_ARABIC_DIGITS)
+        if not digits.isdigit():
+            continue
+        for arabic_name, slug in _COLLECTIONS:
+            if arabic_name in label:
+                pair = (slug, digits)
+                if pair not in found:
+                    found.append(pair)
+                break
+    return found
+
+
+def fetch_hadith(arabic_text: str) -> HadithLead:
+    """جلب الحديث من sunnah.com بإحالته المذكورة في النص.
+
+    واجهتهم البرمجية **مافيهاش بحث نصي** — بتاخد المجموعة ورقم
+    الحديث. وده في صالحنا: الإحالة في المستند مفتاح مباشر، أدق من أي
+    بحث بالنص.
+    """
+    refs = citations(arabic_text)
+    query = " ".join(plain_arabic(arabic_text).split()[:10])
+    search_url = f"{SUNNAH_SITE}/search?q={requests.utils.quote(query)}"
 
     key = settings.sunnah_api_key
     if not key:
         return HadithLead(
             search_url=search_url,
-            note="مفيش مفتاح لـ sunnah.com — افتح الرابط وانسخ الترجمة المعتمدة",
+            reference=", ".join(f"{c}:{n}" for c, n in refs),
+            note=(
+                "مفيش مفتاح لـ sunnah.com — افتح الرابط وانسخ الترجمة المعتمدة"
+                if not refs
+                else f"مفيش مفتاح لـ sunnah.com — الإحالة: "
+                     f"{', '.join(f'{c} {n}' for c, n in refs)}"
+            ),
         )
 
-    try:
-        response = requests.get(
-            f"{SUNNAH_API}/hadiths",
-            params={"q": short},
-            headers={"X-API-Key": key},
-            timeout=_TIMEOUT,
+    if not refs:
+        return HadithLead(
+            search_url=search_url,
+            note="مفيش إحالة في النص، وواجهة sunnah.com مافيهاش بحث نصي",
         )
-        if response.status_code == 403:
-            return HadithLead(
-                search_url=search_url,
-                note="مفتاح sunnah.com مرفوض — راجعه في .env",
+
+    for collection, number in refs:
+        try:
+            response = requests.get(
+                f"{SUNNAH_API}/collections/{collection}/hadiths/{number}",
+                headers={"X-API-Key": key},
+                timeout=_TIMEOUT,
             )
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        logger.warning("بحث sunnah.com فشل: %s", exc)
-        return HadithLead(search_url=search_url, note=f"تعذّر الاتصال: {exc}")
+            if response.status_code in (401, 403):
+                return HadithLead(
+                    search_url=search_url,
+                    note="مفتاح sunnah.com مرفوض — راجعه في .env",
+                )
+            if response.status_code == 404:
+                continue
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            logger.warning("جلب حديث %s/%s فشل: %s", collection, number, exc)
+            continue
 
-    items = (response.json() or {}).get("data") or []
-    if not items:
-        return HadithLead(search_url=search_url, note="مفيش نتيجة مطابقة")
+        payload = response.json() or {}
+        english = ""
+        for entry in payload.get("hadith", []) or []:
+            if entry.get("lang") == "en":
+                english = _strip_html(entry.get("body", ""))
+                break
 
-    first = items[0]
-    english = ""
-    for entry in first.get("hadith", []):
-        if entry.get("lang") == "en":
-            english = _strip_html(entry.get("body", ""))
-            break
+        if english:
+            return HadithLead(
+                search_url=f"{SUNNAH_SITE}/{collection}:{number}",
+                text=english,
+                reference=f"{collection} {number}",
+                collection=collection,
+                available=True,
+            )
 
     return HadithLead(
         search_url=search_url,
-        text=english,
-        reference=str(first.get("hadithNumber", "")),
-        collection=first.get("collection", ""),
-        available=bool(english),
+        reference=", ".join(f"{c}:{n}" for c, n in refs),
+        note="الإحالة موجودة لكن مالقيناش نصًا إنجليزيًا ليها",
     )
+
+
+# الاسم القديم — البحث النصي مش موجود في واجهتهم أصلًا
+search_hadith = fetch_hadith

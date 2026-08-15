@@ -121,9 +121,31 @@ def main() -> int:  # noqa: C901
     except Exception as exc:  # noqa: BLE001
         failures.append(f"جلب قائمة الترجمات فشل: {exc}")
 
+    # ---------- 5ب) قراءة الإحالة من النص ----------
+    #
+    # واجهة sunnah.com مافيهاش بحث نصي — بتاخد المجموعة ورقم الحديث.
+    # فالمفتاح بيتقرا من المستند نفسه، وده أدق من البحث بالنص أصلًا.
+    print("\n=== 5ب) قراءة إحالة الحديث من النص ===")
+    citation_cases = [
+        ("(١) أخرجه البخاري (٧٩)، ومسلم (٢٢٨٢).",
+         [("bukhari", "79"), ("muslim", "2282")], "مخرّجان بأرقام عربية"),
+        ("رواه الترمذي (2678) وأبو داود (4607).",
+         [("tirmidhi", "2678"), ("abudawud", "4607")], "أرقام لاتينية"),
+        ("متفق عليه.", [], "تخريج بدون رقم"),
+        ("المادة الأولى: يلتزم الطرف الأول (٣) بالتسليم.",
+         [], "رقم في نص قانوني عادي"),
+    ]
+    for text, expected, label in citation_cases:
+        got = sources.citations(text)
+        ok = got == expected
+        print(f"  {'✓' if ok else '✗'} {label:<26} → {got}")
+        if not ok:
+            failures.append(f"قراءة الإحالة غلط في «{label}»: {got}")
+
     # ---------- 6) sunnah.com ----------
     print("\n=== 6) sunnah.com ===")
-    lead = sources.search_hadith("المسلمون على شروطهم")
+    lead = sources.fetch_hadith("قال رسول الله: «المسلمون على شروطهم» "
+                                "أخرجه البخاري (٢٧٣٥).")
     print(f"  مفتاح مضبوط: {bool(settings.sunnah_api_key)}")
     print(f"  متاح نصًا: {lead.available}")
     print(f"  رابط البحث: {lead.search_url[:76]}")
