@@ -305,6 +305,33 @@ _DOMAIN_RULES: dict[str, str] = {
   overstating certainty is a factual error in scientific writing.
 - Follow scientific English conventions for voice and tense.
 """,
+    "religious": """\
+## Domain: religious (Islamic sciences)
+
+- **Quranic verses and hadith are removed before you see this text.** If a
+  verse or a hadith still reaches you, translate nothing: return the Arabic
+  unchanged. A published, scholarly-reviewed rendering exists for these, and
+  producing a fresh one is not acceptable here.
+- Transliterate established terms rather than translating them, and gloss on
+  first use only: zakāh, ribā, ṣalāh, ḥajj, ʿidda, ṭalāq, waqf, ijārah,
+  murābaḥah, mudārabah, muḍārib, sukūk, takāful, fatwā, ijtihād, qiyās,
+  ijmāʿ, maslaha. Translating ribā as "interest" or zakāh as "charity"
+  loses the legal content of the term.
+- Keep the distinction between terms English tends to collapse: ḥarām
+  (prohibited) is not makrūh (discouraged); farḍ (obligatory) is not
+  mandūb (recommended); ṣaḥīḥ (sound) is not ḥasan (good) is not ḍaʿīf
+  (weak). These are graded categories, not synonyms.
+- School names stay as names: Ḥanafī, Mālikī, Shāfiʿī, Ḥanbalī, Jaʿfarī.
+- Honorifics are kept, not dropped and not expanded into commentary:
+  ﷺ / "صلى الله عليه وسلم" as "peace and blessings be upon him", "رضي الله
+  عنه" as "may Allah be pleased with him". Match the source: if the source
+  omits an honorific, do not add one.
+- Render الله as "Allah" unless the project style notes say otherwise.
+- Chains of narration keep their order and every name in them. A name you
+  cannot verify is transliterated, never guessed at or dropped.
+- Do not adjudicate. If the source reports a disagreement between scholars,
+  the translation reports the same disagreement without resolving it.
+""",
     "medical": """\
 ## Domain: medical
 
@@ -342,6 +369,7 @@ DOMAIN_LABELS = {
     "scientific": "علمي",
     "medical": "طبي",
     "technical": "تقني",
+    "religious": "شرعي",
     "general": "عام",
 }
 
@@ -349,6 +377,7 @@ DOMAIN_LABELS = {
 DOMAIN_EFFORT = {
     "legal": "high",
     "medical": "high",
+    "religious": "high",
     "scientific": "medium",
     "technical": "medium",
     "general": "low",

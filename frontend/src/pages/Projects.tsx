@@ -29,12 +29,12 @@ export default function Projects() {
   const swapLanguages = () =>
     setForm({ ...form, source_lang: form.target_lang, target_lang: form.source_lang });
 
-  // المجال القانوني والطبي يستحقان موديلًا أقوى — نقترحه تلقائيًا
+  // المجالات اللي الخطأ فيها مكلّف تستحق موديلًا أقوى — نقترحه تلقائيًا
+  const HIGH_STAKES = new Set(["legal", "medical", "religious"]);
   const onDomainChange = (domain: string) => {
-    const suggested =
-      domain === "legal" || domain === "medical"
-        ? config?.legal_model ?? "claude-opus-5"
-        : config?.default_model ?? "claude-sonnet-5";
+    const suggested = HIGH_STAKES.has(domain)
+      ? config?.legal_model ?? "claude-opus-5"
+      : config?.default_model ?? "claude-sonnet-5";
     setForm({ ...form, domain, model: suggested });
   };
 

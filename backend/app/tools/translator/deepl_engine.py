@@ -86,6 +86,16 @@ _DOMAIN_INSTRUCTIONS: dict[str, list[str]] = {
         "Preserve hedging exactly: 'may indicate' must not become "
         "'indicates'. Overstating certainty is a factual error.",
     ],
+    "religious": [
+        "Transliterate established Islamic terms instead of translating "
+        "them: zakah, riba, salah, hajj, idda, talaq, waqf, ijarah, "
+        "murabahah, fatwa, ijtihad, qiyas, ijma.",
+        "Keep graded categories distinct: haram is not makruh, fard is not "
+        "mandub, sahih is not hasan is not daif.",
+        "Keep honorifics as in the source, neither dropping nor adding "
+        "them. Render الله as Allah.",
+        "Keep every name in a chain of narration, in order.",
+    ],
     "technical": [
         "Keep product names, UI labels, menu paths, API names and code "
         "identifiers unchanged.",

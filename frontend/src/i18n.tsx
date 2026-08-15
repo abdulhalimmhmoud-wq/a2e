@@ -481,6 +481,7 @@ export const DOMAIN_NAMES: Record<string, Entry> = {
   medical: { ar: "طبي", en: "Medical" },
   scientific: { ar: "علمي", en: "Scientific" },
   technical: { ar: "تقني", en: "Technical" },
+  religious: { ar: "شرعي", en: "Islamic sciences" },
   general: { ar: "عام", en: "General" },
 };
 

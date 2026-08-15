@@ -13,7 +13,8 @@ from fastapi.staticfiles import StaticFiles
 from app import jobs
 from app.api.routes import router
 from app.core.config import BASE_DIR, settings
-from app.core.db import init_db
+from app.core.db import init_db, session_scope
+from app.tools.translator.seed_terms import seed_religious_terms
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,6 +30,13 @@ FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 async def lifespan(_: FastAPI):
     init_db()
     logger.info("قاعدة البيانات جاهزة: %s", settings.db_path)
+
+    # مصطلحات المجال الشرعي مستقرة ومتفق عليها، فمالوش لازمة إن كل
+    # مستخدم يدخّلها بإيده. بتتزرع مرة واحدة بس ومابتدوسش على أي تعديل.
+    with session_scope() as db:
+        seeded = seed_religious_terms(db)
+    if seeded:
+        logger.info("اتزرع %d مصطلح شرعي في قاعدة المصطلحات", seeded)
 
     # المهام اللي كانت شغالة وقت آخر إقفال بتفضل عالقة في القاعدة —
     # بنعلّمها كمتوقفة عشان تقدر تعيد تشغيلها
