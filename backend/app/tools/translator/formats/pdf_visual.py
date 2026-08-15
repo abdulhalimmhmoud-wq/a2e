@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import fitz  # PyMuPDF
 
@@ -176,7 +177,11 @@ def read_geometry(path, pages: list[int] | None = None) -> list[PageGeometry]:
 
 
 def _fit_font_size(
-    rect: fitz.Rect, text: str, fontname: str, start: float
+    rect: fitz.Rect,
+    text: str,
+    fontname: str,
+    start: float,
+    fontfile: str | None = None,
 ) -> float:
     """أكبر حجم خط النص بيدخل بيه في مساحته.
 
@@ -195,7 +200,7 @@ def _fit_font_size(
         size = start
         while size >= _MIN_FONT_SIZE:
             overflow = page.insert_textbox(
-                box, text, fontname=fontname, fontsize=size,
+                box, text, fontname=fontname, fontfile=fontfile, fontsize=size,
                 align=fitz.TEXT_ALIGN_LEFT,
             )
             if overflow >= 0:
@@ -206,10 +211,103 @@ def _fit_font_size(
         scratch.close()
 
 
+_render_cache: dict[str, tuple[str, str | None] | None] = {}
+
+# الخطوط بالترتيب: المدمج الأول لأنه مضمون الوجود وأخف، وبعده خطوط
+# النظام اللي تغطيتها أوسع. القايمة دي **مش** قايمة لغات — إضافة خط
+# هنا بتوسّع التغطية تلقائيًا لأي لغة يشيلها، من غير ما حد يحدد أنهي
+# لغات بقت مدعومة.
+_FONT_CANDIDATES: list[tuple[str, str | None]] = [
+    ("helv", None),
+    ("arial", r"C:\Windows\Fonts\arial.ttf"),
+    ("segoeui", r"C:\Windows\Fonts\segoeui.ttf"),
+    ("dejavu", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    ("noto", "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"),
+]
+
+
+def _renders_with(sample: str, fontname: str, fontfile: str | None) -> bool:
+    """تجربة واحدة: نكتب ونستخرج ونقارن."""
+    if fontfile and not Path(fontfile).exists():
+        return False
+    scratch = fitz.open()
+    try:
+        page = scratch.new_page(width=600, height=200)
+        overflow = page.insert_textbox(
+            fitz.Rect(5, 5, 595, 195), sample,
+            fontname=fontname, fontfile=fontfile, fontsize=9,
+        )
+        got = " ".join(page.get_text().split())
+        # الخط اللي مالوش شكل للحرف بيرمي «؟»، واللي محتاج تشكيل
+        # بيرجّع الحروف بأشكال عرض مقلوبة — الحالتين مش هيطابقوا الأصل
+        return overflow >= 0 and got == sample
+    except Exception:  # noqa: BLE001
+        return False
+    finally:
+        scratch.close()
+
+
+def pick_font(text: str) -> tuple[str, str | None] | None:
+    """أول خط يكتب النص ده ويرجّعه سليم — أو None لو مفيش.
+
+    القياس بدل القايمة. البديل كان قايمة لغات مسموحة مكتوبة بالإيد،
+    وهي بتغلط في الاتجاهين: بترفض لغة كانت هتشتغل، وبتقبل لغة الخط
+    مش شايلها فتطلع ناقصة بصمت. (القايمة القديمة كانت بتقبل
+    الأذربيجاني، والقياس أثبت إن الخط الأساسي مش شايل حروفه.)
+
+    السؤال الحقيقي مش عن اللغة — هو عن قدرة الخط على المحارف، وده
+    بيتحدد بتجربة. أي لغة تدخل المشروع بعد كده بتتحكم بنفس القاعدة.
+    """
+    sample = " ".join(text.split())[:120]
+    if not sample:
+        return _FONT_CANDIDATES[0]
+
+    # المفتاح على مجموعة الكتابات مش على النص نفسه: نتيجة الخط واحدة
+    # لكل نص من نفس الكتابة
+    key = "".join(sorted({_script_of(char) for char in sample}))
+    if key in _render_cache:
+        return _render_cache[key]
+
+    chosen = None
+    for fontname, fontfile in _FONT_CANDIDATES:
+        if _renders_with(sample, fontname, fontfile):
+            chosen = (fontname, fontfile)
+            break
+
+    _render_cache[key] = chosen
+    return chosen
+
+
+def can_render(text: str) -> bool:
+    """هل فيه خط متاح يكتب النص ده سليم؟"""
+    return pick_font(text) is not None
+
+
+def _script_of(char: str) -> str:
+    """تصنيف خشن للمحرف — كافي لتجميع نتائج الاختبار."""
+    code = ord(char)
+    if code < 0x0250:
+        return "latin"
+    if 0x0370 <= code <= 0x03FF:
+        return "greek"
+    if 0x0400 <= code <= 0x04FF:
+        return "cyrillic"
+    if 0x0590 <= code <= 0x05FF:
+        return "hebrew"
+    if 0x0600 <= code <= 0x06FF or 0xFB50 <= code <= 0xFEFF:
+        return "arabic"
+    if 0x0900 <= code <= 0x097F:
+        return "devanagari"
+    if 0x4E00 <= code <= 0x9FFF:
+        return "han"
+    return "other"
+
+
 def uniform_size(
     replacements: list[tuple[tuple[float, float, float, float], str]],
     fontname: str = "helv",
     ceiling: float = 14.0,
+    fontfile: str | None = None,
 ) -> float:
     """حجم خط واحد يدخل بيه **كل** النص في مساحاته.
 
@@ -222,7 +320,7 @@ def uniform_size(
         if not text.strip():
             continue
         rect = fitz.Rect(*bbox)
-        size = min(size, _fit_font_size(rect, text, fontname, size))
+        size = min(size, _fit_font_size(rect, text, fontname, size, fontfile))
         if size <= _MIN_FONT_SIZE:
             break
     return max(size, _MIN_FONT_SIZE)
@@ -235,6 +333,7 @@ def cover_and_write(
     rtl: bool = False,
     fill: tuple[float, float, float] | None = (1, 1, 1),
     font_size: float | None = None,
+    fontfile: str | None = None,
 ) -> int:
     """تغطية مواضع النص القديم وكتابة الجديد مكانه.
 
@@ -286,14 +385,17 @@ def cover_and_write(
 
         if font_size is not None:
             # حجم موحّد للصفحة كلها، وبنصغّره لو مادخلش في صندوق بعينه
-            size = _fit_font_size(target, text, fontname, font_size)
+            size = _fit_font_size(target, text, fontname, font_size, fontfile)
         else:
-            size = _fit_font_size(target, text, fontname, max(rect.height * 0.8, 6))
+            size = _fit_font_size(
+                target, text, fontname, max(rect.height * 0.8, 6), fontfile
+            )
 
         overflow = page.insert_textbox(
             target,
             text,
             fontname=fontname,
+            fontfile=fontfile,
             fontsize=size,
             align=fitz.TEXT_ALIGN_RIGHT if rtl else fitz.TEXT_ALIGN_LEFT,
         )

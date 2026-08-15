@@ -24,12 +24,10 @@ from app.tools.translator.formats import pdf_visual
 
 logger = logging.getLogger(__name__)
 
-# الخطوط المدمجة في الـ PDF بتغطي اللاتيني بس. الهدف بلغة تانية
-# محتاج خط مضمَّن وتشكيل، وده مش متاح هنا.
-_LATIN_TARGETS = {
-    "en", "fr", "de", "es", "it", "pt", "nl", "tr", "az",
-    "pl", "cs", "sv", "da", "no", "fi", "ro", "hu", "id", "ms",
-}
+# نسبة الوحدات اللي ممكن نصّها ما يطابقش الخريطة قبل ما نلغي المسار.
+# فوقها معناها إن ترتيب الوحدات اتغيّر، وساعتها الترجمة هتتحط على
+# صفحات غلط — والمستند الغلط أسوأ من المستند العادي.
+_MAX_DRIFT = 0.20
 
 
 @dataclass
@@ -41,9 +39,14 @@ class OverlayResult:
     warnings: list[str] = field(default_factory=list)
 
 
-def supports(target_lang: str) -> bool:
-    """هل ينفع نكتب اللغة دي في الـ PDF مباشرة؟"""
-    return target_lang.lower() in _LATIN_TARGETS
+def supports(sample_text: str) -> bool:
+    """هل ينفع نكتب النص ده في الـ PDF ونرجّعه سليم؟
+
+    الفحص على **النص نفسه** مش على اسم اللغة. لغة الهدف اسم؛ اللي
+    بيفرق هو محارف النص وقدرة الخط عليها. كده أي لغة جديدة تتحكم
+    بنفس القاعدة من غير ما حد يضيفها لقائمة.
+    """
+    return pdf_visual.can_render(sample_text)
 
 
 def load_layout(path: Path) -> list[dict]:
@@ -69,12 +72,37 @@ def _pages_for_units(
     return grouped
 
 
+def drift(layout: list[dict], sources: list[str]) -> float:
+    """نسبة الوحدات اللي نصّها المصدري مش مطابق للخريطة.
+
+    الخريطة والوحدات بيتبنوا من نفس الملف بترتيب المستند، فالمفروض
+    يتطابقوا واحدة بواحدة. لو الترتيب اتغيّر لأي سبب — تغيير في
+    مولّد الملف أو في قارئه — الترجمة هتتحط على صفحات غلط **من غير
+    ما حد ياخد باله**. الفحص ده هو اللي بيمنع ده.
+    """
+    if not sources:
+        return 0.0
+
+    mismatched = 0
+    for entry, source in zip(layout, sources):
+        expected = " ".join(str(entry.get("text", "")).split())
+        actual = " ".join(source.split())
+        if not expected or not actual:
+            continue
+        # المقارنة على البداية: الوحدة ممكن تتقسّم لجمل عند التقطيع
+        head = min(len(expected), len(actual), 40)
+        if expected[:head] != actual[:head]:
+            mismatched += 1
+    return mismatched / len(sources)
+
+
 def render(
     source_pdf: Path,
     layout_path: Path,
     translations: list[str],
     output: Path,
     target_lang: str = "en",
+    sources: list[str] | None = None,
 ) -> OverlayResult:
     """كتابة الترجمة على الصفحات الأصلية.
 
@@ -83,12 +111,15 @@ def render(
     """
     result = OverlayResult(output=output)
 
-    if not supports(target_lang):
+    sample = " ".join(text for text in translations[:12] if text.strip())
+    font = pdf_visual.pick_font(sample)
+    if font is None:
         result.warnings.append(
-            f"اللغة «{target_lang}» محتاجة تشكيل حروف مش متاح في الـ PDF — "
-            "التصدير هيرجع لملف Word"
+            f"مفيش خط متاح يكتب النص ده سليم في الـ PDF (هدف: "
+            f"{target_lang}) — التصدير هيرجع لملف Word"
         )
         return result
+    fontname, fontfile = font
 
     layout = load_layout(layout_path)
     if not layout:
@@ -101,6 +132,17 @@ def render(
             f"{len(layout)}) — اتحطّت المشتركة بس"
         )
         result.units_skipped = abs(len(layout) - len(translations))
+
+    # الخريطة بتربط الوحدة بصفحتها بالترتيب. لو الترتيب انزاح، كل
+    # ترجمة بعد نقطة الانزياح بتروح صفحة غلط بصمت — فبنتأكد الأول.
+    if sources is not None:
+        ratio = drift(layout, sources)
+        if ratio > _MAX_DRIFT:
+            result.warnings.append(
+                f"ترتيب الوحدات مش مطابق للخريطة ({ratio:.0%} مختلفة) — "
+                "التصدير هيرجع لملف Word بدل ما يحط الترجمة في صفحات غلط"
+            )
+            return result
 
     grouped = _pages_for_units(layout, translations)
 
@@ -126,9 +168,12 @@ def render(
 
             # حجم واحد للصفحة كلها. من غيره كل صندوق بيحسب حجمه لوحده
             # فالصفحة بتطلع بخطوط متضاربة — عنوان ضخم جنب فقرة مجهرية.
-            size = pdf_visual.uniform_size(replacements)
+            size = pdf_visual.uniform_size(
+                replacements, fontname=fontname, fontfile=fontfile
+            )
             placed = pdf_visual.cover_and_write(
-                page, replacements, font_size=size
+                page, replacements,
+                fontname=fontname, fontfile=fontfile, font_size=size,
             )
             result.units_placed += placed
             result.units_skipped += max(0, len(texts) - placed)

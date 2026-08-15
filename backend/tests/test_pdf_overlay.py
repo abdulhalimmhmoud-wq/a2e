@@ -62,23 +62,49 @@ def main() -> int:  # noqa: C901
     source = WORK / "source.pdf"
     build_source(source, pages=2)
 
-    # ---------- 1) اللغات المدعومة ----------
-    print("=== 1) أي لغات ينفع نكتبها في الـ PDF ===")
-    for lang, expected in [
-        ("en", True), ("fr", True), ("tr", True), ("az", True),
-        ("ar", False), ("ru", False), ("uk", False),
-    ]:
-        got = pdf_overlay.supports(lang)
+    # ---------- 1) القدرة بتتقاس مش بتتحفظ في قائمة ----------
+    # القرار مبني على النص نفسه، فأي لغة جديدة تدخل المشروع بعد كده
+    # بتتحكم بنفس القاعدة من غير ما حد يضيفها لحتة.
+    print("=== 1) هل الخط يكتب النص ده سليم؟ ===")
+    samples = [
+        ("Article 1. The seller shall deliver the goods.", True, "إنجليزي"),
+        ("L'acheteur doit régler la facture sous trente jours.", True, "فرنسي"),
+        ("Alıcı malları qəbul etməyə borcludur.", True, "أذربيجاني"),
+        ("Đối tượng phải xuất trình giấy tờ tùy thân.", True, "فيتنامي"),
+        # السيريلي مالوش تشكيل وخطوط النظام شايلاه — فبيشتغل
+        ("Покупатель обязан оплатить счёт в течение месяца.", True, "روسي"),
+        # دول محتاجين تشكيل أو خطوط مش متاحة، فبيترفضوا
+        ("المادة الأولى: يلتزم البائع بتسليم البضاعة.", False, "عربي"),
+        ("買主は三十日以内に代金を支払うものとする。", False, "ياباني"),
+    ]
+    for text, expected, label in samples:
+        got = pdf_overlay.supports(text)
         ok = got == expected
-        print(f"  {'✓' if ok else '✗'} {lang}: {got}")
+        print(f"  {'✓' if ok else '✗'} {label:<12} → {got}")
         if not ok:
-            failures.append(f"دعم اللغة {lang} غلط: {got}")
+            failures.append(f"قرار الكتابة غلط لـ{label}: {got}")
 
-    # العربي لازم يترفض: الكتابة بيه في الـ PDF بتطلع مقلوبة
-    if pdf_overlay.supports("ar"):
+    # العربي لازم يترفض: الكتابة بيه بتطلع أشكال عرض مقلوبة، وهو نفس
+    # العطل اللي الأداة موجودة عشان تمنعه
+    if pdf_overlay.supports("المادة الأولى: يلتزم البائع بالتسليم."):
         failures.append(
-            "العربي اتقبل كهدف — الكتابة بيه بتطلع أشكال عرض مقلوبة، "
-            "وده نفس العطل اللي الأداة موجودة عشان تمنعه"
+            "العربي اتقبل — الكتابة بيه بتطلع مقلوبة، وده نفس العطل "
+            "اللي الأداة موجودة عشان تمنعه"
+        )
+
+    # ---------- 1ب) كشف انزياح الترتيب ----------
+    print("\n=== 1ب) الحماية من وضع الترجمة في صفحة غلط ===")
+    sample_layout = [{"page": i // 2 + 1, "text": f"وحدة رقم {i}"}
+                     for i in range(10)]
+    aligned = [f"وحدة رقم {i}" for i in range(10)]
+    shifted = [f"وحدة رقم {i + 3}" for i in range(10)]
+    print(f"  مطابق  : انزياح={pdf_overlay.drift(sample_layout, aligned):.0%}")
+    print(f"  منزاح  : انزياح={pdf_overlay.drift(sample_layout, shifted):.0%}")
+    if pdf_overlay.drift(sample_layout, aligned) > 0.01:
+        failures.append("ترتيب مطابق اتحسب منزاح")
+    if pdf_overlay.drift(sample_layout, shifted) < 0.5:
+        failures.append(
+            "ترتيب منزاح عدّى — الترجمة هتتحط في صفحات غلط بصمت"
         )
 
     # ---------- 2) خريطة الصفحات ----------
@@ -156,6 +182,7 @@ def main() -> int:  # noqa: C901
     rtl = pdf_overlay.render(
         source, layout_path, ARABIC_LINES, rtl_out, target_lang="ar"
     )
+
     print(f"  صفحات اتكتبت: {rtl.pages_written} (المفروض 0)")
     print(f"  تحذير: {rtl.warnings[0][:64] if rtl.warnings else '—'}")
     if rtl.pages_written:

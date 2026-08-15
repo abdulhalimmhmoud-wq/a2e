@@ -37,6 +37,10 @@ _SEQUENTIAL_RUN = 6
 # فوق النسبة دي من الصفحات بترميز مكسور، مابنثقش في طبقة النص كلها
 _UNRELIABLE_PAGE_RATIO = 0.10
 
+# نسبة محارف منطقة الاستخدام الخاص اللي تخلينا نحكم إن الصفحة مرمَّزة
+# بطريقة خاصة. محرف أو اتنين ممكن يكونوا أيقونة، لكن عُشر الصفحة لأ.
+_PRIVATE_USE_RATIO = 0.10
+
 _WHITESPACE = re.compile(r"\s+")
 
 
@@ -55,12 +59,41 @@ def _longest_sequential_run(text: str) -> int:
 
 
 def _page_is_unreliable(page) -> bool:
-    """هل نص الصفحة دي مرقَّم بالأشكال بدل ما يكون مرمَّزًا؟"""
+    """هل نص الصفحة دي مرقَّم بالأشكال بدل ما يكون مرمَّزًا؟
+
+    تلات إشارات، الاتنين الأخيرة مستقلة تمامًا عن اسم الخط عشان
+    تمسك عائلات خطوط محدش شافها قبل كده:
+
+      ١. اسم من عائلة معروفة بترقيم الأشكال.
+      ٢. تسلسل نقاط ترميز — النص الطبيعي عمره ما بيعمله.
+      ٣. محارف من منطقة الاستخدام الخاص — دي محجوزة أصلًا للترميزات
+         المخصوصة، فوجودها بكثافة معناه إن الملف بيرمّز بطريقته.
+    """
     for font in page.get_fonts(full=True):
         name = font[3].split("+")[-1]
         if _GLYPH_INDEXED_FONTS.match(name):
             return True
-    return _longest_sequential_run(page.get_text()) >= _SEQUENTIAL_RUN
+
+    text = page.get_text()
+    if _longest_sequential_run(text) >= _SEQUENTIAL_RUN:
+        return True
+
+    stripped = _WHITESPACE.sub("", text)
+    if len(stripped) >= 40:
+        private = sum(1 for char in stripped if _in_private_use(char))
+        if private / len(stripped) >= _PRIVATE_USE_RATIO:
+            return True
+    return False
+
+
+def _in_private_use(char: str) -> bool:
+    """منطقة الاستخدام الخاص في Unicode — مالهاش معنى متفق عليه."""
+    code = ord(char)
+    return (
+        0xE000 <= code <= 0xF8FF          # الأساسية
+        or 0xF0000 <= code <= 0xFFFFD     # الملحقة أ
+        or 0x100000 <= code <= 0x10FFFD   # الملحقة ب
+    )
 
 
 @dataclass

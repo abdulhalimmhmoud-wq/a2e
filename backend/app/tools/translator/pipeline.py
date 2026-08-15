@@ -690,14 +690,6 @@ def _export_overlay(
     if file.fmt != "pdf" or not layout_path or not Path(layout_path).exists():
         return None
 
-    if not pdf_overlay.supports(target_lang):
-        logger.info(
-            "التصدير على الأصل مش متاح للغة %s — الكتابة العربية في الـ PDF "
-            "بتطلع أشكال عرض مقلوبة، فبنرجع لملف Word",
-            target_lang,
-        )
-        return None
-
     units = db.execute(
         select(TextUnitRecord)
         .where(TextUnitRecord.file_id == file.id)
@@ -713,6 +705,7 @@ def _export_overlay(
         ordered,
         output,
         target_lang=target_lang,
+        sources=[unit.source_text for unit in units],
     )
     for warning in result.warnings:
         logger.warning("تصدير على الأصل: %s", warning)
