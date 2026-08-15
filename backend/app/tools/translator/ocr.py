@@ -312,8 +312,14 @@ def build_docx(
     output: Path,
     title: str = "",
     source_lang: str = "ar",
-) -> Path:
-    """تحويل نتيجة القراءة لملف Word جاهز للترجمة."""
+) -> tuple[Path, list[dict]]:
+    """تحويل نتيجة القراءة لملف Word جاهز للترجمة.
+
+    بيرجّع كمان **خريطة الصفحات**: لكل وحدة نص بتتكتب في الملف،
+    رقم صفحتها في الأصل ونصّها. الخريطة دي هي اللي بتخلي التصدير
+    يقدر يرجّع الترجمة لمكانها على الصفحة الأصلية بدل ما يبني ملفًا
+    جديدًا بيضيّع الشعارات والزخارف.
+    """
     from app.tools.translator.langs import is_rtl
 
     rtl = is_rtl(source_lang)
@@ -326,20 +332,24 @@ def build_docx(
         heading = document.add_heading(title, level=0)
         _set_rtl(heading)
 
-    pending_rows: list[list[str]] = []
+    # خريطة الصفحات: عنصر لكل وحدة نص **بالترتيب اللي بتتكتب بيه**،
+    # عشان تطابق ترتيب الوحدات اللي الاستخراج هيقراها من نفس الملف.
+    layout: list[dict] = []
+    pending_rows: list[tuple[list[str], int]] = []
 
     def flush_table() -> None:
         if not pending_rows:
             return
-        width = max(len(row) for row in pending_rows)
+        width = max(len(row) for row, _ in pending_rows)
         table = document.add_table(rows=len(pending_rows), cols=width)
         table.style = "Table Grid"
-        for row_index, row in enumerate(pending_rows):
+        for row_index, (row, page) in enumerate(pending_rows):
             for col_index in range(width):
                 cell = table.cell(row_index, col_index)
                 cell.text = row[col_index] if col_index < len(row) else ""
                 for paragraph in cell.paragraphs:
                     _set_rtl(paragraph)
+                layout.append({"page": page, "text": cell.text, "kind": "cell"})
         pending_rows.clear()
 
     current_page = 0
@@ -350,7 +360,7 @@ def build_docx(
 
         if block.kind == "table_row":
             if block.cells:
-                pending_rows.append(block.cells)
+                pending_rows.append((block.cells, block.page))
             continue
 
         flush_table()
@@ -365,9 +375,10 @@ def build_docx(
         else:
             paragraph = document.add_paragraph(text)
         _set_rtl(paragraph)
+        layout.append({"page": block.page, "text": text, "kind": block.kind})
 
     flush_table()
 
     output.parent.mkdir(parents=True, exist_ok=True)
     document.save(str(output))
-    return output
+    return output, layout

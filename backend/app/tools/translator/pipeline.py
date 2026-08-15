@@ -163,11 +163,20 @@ def _run_ocr(
         )
 
     target = work_dir / f"{source.stem}.ocr.docx"
-    ocr.build_docx(
+    target, layout = ocr.build_docx(
         result,
         target,
         title="",
         source_lang=project.source_lang if project else "ar",
+    )
+
+    # خريطة الصفحات بتتحفظ جنب ملف العمل. من غيرها التصدير مايعرفش
+    # كل ترجمة ترجع لأنهي صفحة في الأصل، فبيضطر يبني ملفًا جديدًا
+    # ويضيّع الشعارات والزخارف.
+    layout_path = work_dir / f"{source.stem}.layout.json"
+    layout_path.write_text(
+        json.dumps({"source": str(source), "units": layout}, ensure_ascii=False),
+        encoding="utf-8",
     )
 
     file.page_count = result.pages
@@ -176,6 +185,7 @@ def _run_ocr(
         "pages": result.pages,
         "cost_usd": result.usage.cost_usd,
         "failed_pages": result.failed_pages,
+        "layout_path": str(layout_path),
     }
 
 
@@ -209,8 +219,13 @@ def extract_and_segment(
             db, file, source, work_dir, job
         )
         meta["ocr"] = ocr_info
+        # خريطة الصفحات لازم توصل للتصدير، وده بيحصل بعد انتهاء
+        # الاستخراج بوقت طويل — فبتتحفظ على الملف نفسه
+        if ocr_info.get("layout_path"):
+            meta["layout_path"] = ocr_info["layout_path"]
 
     file.working_path = str(working_path)
+    file.meta = json.dumps(meta, ensure_ascii=False, default=str)
     if meta.get("page_count"):
         file.page_count = int(meta["page_count"])
 
@@ -643,11 +658,71 @@ def export_file(db: Session, file: SourceFile) -> Path:
     out_dir = project_dir(file.project_id) / "output"
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = Path(file.original_filename).stem
+
+    # الملف اللي اتقرا ضوئيًا: بنكتب الترجمة على صفحاته الأصلية بدل
+    # ما نبني ملفًا جديدًا، عشان الشعار والختم والإطار يفضلوا مكانهم.
+    overlay = _export_overlay(db, file, translations, target_lang, out_dir, stem)
+    if overlay is not None:
+        return overlay
+
     extension = registry.output_extension(working_fmt)
     output = out_dir / f"{stem}.{target_lang}{extension}"
 
     registry.merge(
         working_fmt, working_path, output, translations, target_lang=target_lang
+    )
+    return output
+
+
+def _export_overlay(
+    db: Session,
+    file: SourceFile,
+    translations: dict,
+    target_lang: str,
+    out_dir: Path,
+    stem: str,
+) -> Path | None:
+    """تصدير على الصفحات الأصلية — أو None لو المسار ده مش متاح."""
+    from app.tools.translator.formats import pdf_overlay
+
+    meta = json.loads(file.meta or "{}")
+    layout_path = meta.get("layout_path")
+    if file.fmt != "pdf" or not layout_path or not Path(layout_path).exists():
+        return None
+
+    if not pdf_overlay.supports(target_lang):
+        logger.info(
+            "التصدير على الأصل مش متاح للغة %s — الكتابة العربية في الـ PDF "
+            "بتطلع أشكال عرض مقلوبة، فبنرجع لملف Word",
+            target_lang,
+        )
+        return None
+
+    units = db.execute(
+        select(TextUnitRecord)
+        .where(TextUnitRecord.file_id == file.id)
+        .order_by(TextUnitRecord.order_index)
+    ).scalars().all()
+
+    ordered = [translations.get(unit.unit_key, unit.source_text) for unit in units]
+    output = out_dir / f"{stem}.{target_lang}.pdf"
+
+    result = pdf_overlay.render(
+        Path(file.stored_path),
+        Path(layout_path),
+        ordered,
+        output,
+        target_lang=target_lang,
+    )
+    for warning in result.warnings:
+        logger.warning("تصدير على الأصل: %s", warning)
+
+    if not result.pages_written:
+        return None
+
+    logger.info(
+        "اتصدّر على الأصل: %d صفحة · %d وحدة (%d اتخطّت)",
+        result.pages_written, result.units_placed, result.units_skipped,
     )
     return output
 
