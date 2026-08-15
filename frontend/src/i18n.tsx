@@ -372,6 +372,25 @@ const S = {
     en: "Extra formatting tag ({tag})",
   },
   "flag.glossary": { ar: "مخالفة مصطلح: {detail}", en: "Glossary breach: {detail}" },
+  // ------------------------------------------------------------ نص مقدّس
+  "flag.quran_certain": { ar: "آية قرآنية — مقفول", en: "Quranic verse — locked" },
+  "flag.quran_likely": {
+    ar: "يُرجَّح أنه نص قرآني",
+    en: "Likely Quranic text",
+  },
+  "flag.hadith_certain": { ar: "حديث نبوي — مقفول", en: "Hadith — locked" },
+  "flag.hadith_likely": { ar: "يُرجَّح أنه حديث", en: "Likely a hadith" },
+  "review.sacredLocked": {
+    ar: "النص المقدّس مقفول ولم يُرسَل لأي محرّك. ضع الترجمة المعتمدة بنفسك ثم اعتمد المقطع.",
+    en: "Sacred text is locked and was never sent to an engine. Paste the approved translation yourself, then approve the segment.",
+  },
+  "review.unlock": { ar: "فتح القفل", en: "Unlock" },
+  "review.lock": { ar: "قفل", en: "Lock" },
+  "file.sacredFound": {
+    ar: "{locked} مقطع مقفول (آيات/أحاديث) · {flagged} مقطع يحتاج تدقيقًا",
+    en: "{locked} locked segment(s) (Quran/Hadith) · {flagged} need checking",
+  },
+
   "flag.ambiguousSeparator": {
     ar: "فاصل رقمي ملتبس ({value}) — راجع المعنى",
     en: "Ambiguous number separator ({value}) — check the meaning",

@@ -252,6 +252,19 @@ export default function Review() {
             </div>
 
             <div className="target" style={targetStyle}>
+              {segment.is_locked && (
+                <div
+                  className="notice"
+                  style={{ margin: "0 0 8px", fontSize: 12 }}
+                >
+                  {t("review.sacredLocked")}
+                  {segment.notes && (
+                    <div className="muted" style={{ marginTop: 4 }}>
+                      {segment.notes}
+                    </div>
+                  )}
+                </div>
+              )}
               {segment.is_translatable ? (
                 <textarea
                   style={targetStyle}
@@ -322,6 +335,27 @@ export default function Review() {
                   {flagLabel(flag).slice(0, 30)}
                 </span>
               ))}
+              {segment.is_translatable && (
+                <button
+                  className="btn sm"
+                  onClick={async () => {
+                    const locked = !segment.is_locked;
+                    await api.updateSegment(segment.id, {
+                      is_locked: locked,
+                      plan_propagation: false,
+                    });
+                    // تحديث المقطع ده بس — إعادة التحميل من الأول
+                    // بترمي الصفحات اللي المراجع نزّلها بالتمرير
+                    setSegments((prev) =>
+                      prev.map((s) =>
+                        s.id === segment.id ? { ...s, is_locked: locked } : s
+                      )
+                    );
+                  }}
+                >
+                  {t(segment.is_locked ? "review.unlock" : "review.lock")}
+                </button>
+              )}
             </div>
           </div>
         );

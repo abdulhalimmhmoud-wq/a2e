@@ -25,7 +25,7 @@ from app.models import (
     TextUnitRecord,
     UsageRecord,
 )
-from app.tools.translator import tm
+from app.tools.translator import sacred, tm
 from app.tools.translator.costing import pages_from_words
 from app.tools.translator.engine import (
     BatchResult,
@@ -95,6 +95,9 @@ class ExtractionStats:
     ocr_pages: int = 0
     ocr_cost_usd: float = 0.0
     ocr_failed_pages: list[int] = field(default_factory=list)
+    # آيات وأحاديث: اتقفلت (مؤكَّدة) أو اتعلّمت للمراجعة (مرجَّحة)
+    sacred_locked: int = 0
+    sacred_flagged: int = 0
 
 
 def _run_ocr(
@@ -223,6 +226,7 @@ def extract_and_segment(
 
     order = 0
     total_words = total_chars = 0
+    sacred_locked = sacred_flagged = 0
 
     for unit in result.units:
         db.add(
@@ -251,6 +255,11 @@ def extract_and_segment(
             total_words += count_words(span.text)
             total_chars += len(plain)
 
+            # الآيات والأحاديث: بنكشفها هنا قبل ما توصل لأي محرّك.
+            # المؤكَّد بيتقفل فمايتبعتش للترجمة أصلًا، والمرجَّح بيتعلّم
+            # للمراجع من غير ما يوقّف الشغل.
+            sacred_hit = sacred.detect(plain) if translatable else sacred.Detection()
+
             db.add(
                 Segment(
                     file_id=file.id,
@@ -266,8 +275,15 @@ def extract_and_segment(
                     # النص غير القابل للترجمة بيعدّي زي ما هو
                     target_text="" if translatable else span.text,
                     status="draft" if translatable else "approved",
+                    is_locked=sacred_hit.certain,
+                    qa_flags=json.dumps(sacred_hit.flags(), ensure_ascii=False),
+                    notes=sacred_hit.note(),
                 )
             )
+            if sacred_hit.certain:
+                sacred_locked += 1
+            elif sacred_hit.found:
+                sacred_flagged += 1
             order += 1
 
     file.unit_count = len(result.units)
@@ -289,6 +305,8 @@ def extract_and_segment(
         ocr_pages=int(ocr_info.get("pages", 0)),
         ocr_cost_usd=float(ocr_info.get("cost_usd", 0.0)),
         ocr_failed_pages=list(ocr_info.get("failed_pages", [])),
+        sacred_locked=sacred_locked,
+        sacred_flagged=sacred_flagged,
     )
 
 
@@ -325,11 +343,16 @@ def translate_file(
     project = db.get(Project, file.project_id)
     stats = TranslationStats()
 
+    # المقفول بيتستثنى هنا مش في مكان تاني: القفل معناه إن في إنسان
+    # قرر إن المقطع ده مايتكتبش فوقه — سواء قفله بإيده أو اتقفل تلقائيًا
+    # لأنه آية أو حديث. من غير الشرط ده، إعادة تشغيل الترجمة كانت
+    # بتدوس على المقفول وتبعته للمحرّك.
     pending = db.execute(
         select(Segment)
         .where(
             Segment.file_id == file.id,
             Segment.is_translatable.is_(True),
+            Segment.is_locked.is_(False),
             Segment.status == "draft",
         )
         .order_by(Segment.order_index)
@@ -419,6 +442,15 @@ def translate_file(
 
             # أعلام المحرّك نفسه (مثلًا: بسّط التنسيق عن قصد)
             problems.extend(result.segment_flags.get(segment_id, []))
+
+            # أعلام النص المقدّس اتحطّت وقت الاستخراج من فحص المصدر،
+            # وفحوصات ما بعد الترجمة مابتعرفش عنها حاجة. من غير الدمج
+            # ده كانت بتتمسح ساعة ما المقطع يترجم — وهي بالظبط اللحظة
+            # اللي المراجع محتاج يشوفها فيها.
+            problems.extend(
+                flag for flag in json.loads(segment.qa_flags or "[]")
+                if flag.startswith(("quran_", "hadith_"))
+            )
 
             segment.target_text = target
             segment.status = "translated"
