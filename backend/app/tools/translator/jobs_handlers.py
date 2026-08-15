@@ -16,6 +16,25 @@ from app.tools.translator.engine import (
 logger = logging.getLogger(__name__)
 
 
+def _mark_file_failed(file_id: str, stage: str) -> None:
+    """إرجاع حالة الملف لـ failed بعد فشل المهمة.
+
+    خط الأنابيب بيحطّ الحالة «extracting» أو «translating» وهو ماشي،
+    ولو رمى استثناء الجلسة بتترجع فبتفضل الحالة دي محفورة. الملف كان
+    بيبان في الواجهة «جارٍ الاستخراج» للأبد جنب رسالة خطأ، ومافيش
+    طريقة يعيد المحاولة. لازم جلسة جديدة لأن جلسة المهمة اترجعت.
+    """
+    from app.core.db import session_scope
+
+    try:
+        with session_scope() as db:
+            file = db.get(SourceFile, file_id)
+            if file and file.status == stage:
+                file.status = "failed"
+    except Exception:  # noqa: BLE001
+        logger.exception("مافيش وسيلة لتسجيل فشل الملف %s", file_id)
+
+
 def run_extraction(db: Session, job: Job, file_id: str) -> dict:
     file = db.get(SourceFile, file_id)
     if file is None:
@@ -24,7 +43,11 @@ def run_extraction(db: Session, job: Job, file_id: str) -> dict:
     job.message = "جارٍ استخراج النص"
     db.commit()
 
-    stats = pipeline.extract_and_segment(db, file, job=job)
+    try:
+        stats = pipeline.extract_and_segment(db, file, job=job)
+    except Exception:
+        _mark_file_failed(file_id, "extracting")
+        raise
 
     job.total = stats.segments
     job.progress = stats.segments
@@ -88,7 +111,11 @@ def run_translation(
     job.message = f"جارٍ الترجمة ({engine.model})"
     db.commit()
 
-    stats = pipeline.translate_file(db, file, engine, job=job, use_memory=use_memory)
+    try:
+        stats = pipeline.translate_file(db, file, engine, job=job, use_memory=use_memory)
+    except Exception:
+        _mark_file_failed(file_id, "translating")
+        raise
 
     return {
         "translated": stats.translated,

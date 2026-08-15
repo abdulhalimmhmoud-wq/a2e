@@ -35,6 +35,22 @@ logger = logging.getLogger(__name__)
 # دقّة المسح. أعلى = أدق وأغلى. 150 توازن عملي للمستندات المكتوبة.
 DEFAULT_DPI = 150
 
+# الواجهة البرمجية بترفض أي صورة أكبر من 10 ميجا بعد ترميز base64.
+# بنشتغل تحت الحد بهامش واسع لأن حجم الترميز بيختلف من صفحة للتانية
+# حسب كثافة الحبر والضوضاء في المسح.
+MAX_IMAGE_B64 = 4_500_000
+
+# النموذج بيصغّر أي صورة ضلعها الأطول أكبر من ~1568 بكسل قبل ما يقراها،
+# فالرسم فوق كده بيبعت بيانات على الشبكة وتترمي. بنسيب هامش فوق الحد
+# عشان التصغير عنده يلاقي تفاصيل يشتغل عليها.
+MAX_EDGE_PX = 2200
+
+# الصفحة الممسوحة صورة فوتوغرافية فيها ضوضاء، و PNG بلا فقد أسوأ صيغة
+# ليها: نفس الصفحة طلعت 25.9 ميجا بـ PNG مقابل 3.6 ميجا بـ JPEG بنفس
+# الدقة بالظبط. الفرق ده هو اللي كان بيكسّر الحد.
+JPEG_QUALITY = 85
+_MEDIA_TYPE = "image/jpeg"
+
 _SYSTEM = """\
 You transcribe scanned document pages into structured text.
 
@@ -98,13 +114,49 @@ class OcrResult:
     failed_pages: list[int] = field(default_factory=list)
 
 
+def _b64_size(raw: int) -> int:
+    """حجم البيانات بعد ترميز base64 — الحد بيتحسب على المرمَّز."""
+    return (raw + 2) // 3 * 4
+
+
+def render_page(page, dpi: int = DEFAULT_DPI, budget: int = MAX_IMAGE_B64) -> bytes:
+    """رسم صفحة واحدة كصورة JPEG مضمونة إنها تحت حد الحجم.
+
+    مقاسات الصفحات بتتفاوت بشكل كبير: الصفحة اللي كشفت العيب ده كانت
+    ٢٥.٨×٣٦.٨ بوصة (مقاس مخططات)، فدقة ثابتة عليها بتطلع ٣٨٦٩×٥٥٢٣
+    بكسل. أي دقة ثابتة هتنفجر على مقاس ما، فالقياس هنا على الحجم
+    الفعلي بعد الترميز مش على الدقة.
+    """
+    zoom = dpi / 72.0
+    longest = max(page.rect.width, page.rect.height) * zoom
+    if longest > MAX_EDGE_PX:
+        zoom *= MAX_EDGE_PX / longest
+
+    # بننزّل الجودة الأول قبل ما ننزّل الدقة: خفض الجودة بيوفّر حجمًا
+    # كتير من غير ما يضيّع حروفًا، أما خفض الدقة فبيصغّر الحروف نفسها
+    # وده اللي بيأذي القراءة.
+    data = b""
+    for _ in range(8):
+        pixmap = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
+        for quality in (JPEG_QUALITY, 70, 55):
+            data = pixmap.tobytes("jpeg", jpg_quality=quality)
+            if _b64_size(len(data)) <= budget:
+                return data
+        zoom *= 0.7
+
+    logger.warning(
+        "صفحة فضلت %.1f ميجا بعد التصغير المتكرر — هتتبعت زي ما هي",
+        _b64_size(len(data)) / 1e6,
+    )
+    return data
+
+
 def render_pages(path: Path, dpi: int = DEFAULT_DPI) -> list[bytes]:
-    """تحويل صفحات الـ PDF لصور PNG."""
+    """تحويل صفحات الـ PDF لصور JPEG تحت حد حجم الواجهة البرمجية."""
     images: list[bytes] = []
     with fitz.open(str(path)) as document:
         for page in document:
-            pixmap = page.get_pixmap(dpi=dpi)
-            images.append(pixmap.tobytes("png"))
+            images.append(render_page(page, dpi))
     return images
 
 
@@ -126,7 +178,7 @@ def _read_page(client, model: str, image: bytes, page_number: int) -> tuple[list
                         "type": "image",
                         "source": {
                             "type": "base64",
-                            "media_type": "image/png",
+                            "media_type": _MEDIA_TYPE,
                             "data": base64.standard_b64encode(image).decode(),
                         },
                     },
