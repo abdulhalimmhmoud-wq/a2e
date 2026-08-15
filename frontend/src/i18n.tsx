@@ -280,6 +280,55 @@ const S = {
     ar: "Contract of Adhesion",
     en: "عقد إذعان",
   },
+  "glossary.addOne": { ar: "إضافة مصطلح", en: "Add a term" },
+  "glossary.bulkTitle": { ar: "إضافة دفعة واحدة", en: "Add in bulk" },
+  "glossary.fromMemory": { ar: "من ذاكرة الترجمة", en: "From translation memory" },
+  "glossary.fromMemoryHint": {
+    ar: "الأزواج المعتمدة عندك بالفعل — مفيش رفع، والنموذج بيميّز المصطلح من الكلام العادي",
+    en: "Pairs you have already approved — nothing to upload; the model separates terminology from ordinary wording",
+  },
+  "glossary.importTable": { ar: "استيراد جدول", en: "Import a table" },
+  "glossary.importTableHint": {
+    ar: "ملف CSV أو Excel بعمودين: المصطلح ثم ترجمته. بدون أي تكلفة.",
+    en: "A CSV or Excel file with two columns: term, then its rendering. No cost.",
+  },
+  "glossary.fromPair": { ar: "من ملف وترجمته", en: "From a file and its translation" },
+  "glossary.fromPairHint": {
+    ar: "ارفع المستند الأصلي وترجمته المعتمدة — بنحاذيهم ونستخرج المصطلحات",
+    en: "Upload the original document and its approved translation — we align them and extract the terminology",
+  },
+  "glossary.sourceFile": { ar: "الملف الأصلي", en: "Original file" },
+  "glossary.targetFile": { ar: "الترجمة المعتمدة", en: "Approved translation" },
+  "glossary.extracting": { ar: "جارٍ الاستخراج…", en: "Extracting…" },
+  "glossary.candidates": {
+    ar: "{n} مصطلح مرشّح — اختر اللي تضيفه",
+    en: "{n} candidate terms — choose what to add",
+  },
+  "glossary.examined": {
+    ar: "من {n} زوج · تكلفة ${cost}",
+    en: "from {n} pairs · cost ${cost}",
+  },
+  "glossary.noCandidates": {
+    ar: "مالقيناش مصطلحات تستحق الإضافة.",
+    en: "No terms worth adding were found.",
+  },
+  "glossary.alreadyExists": { ar: "موجود", en: "already in" },
+  "glossary.conflicts": {
+    ar: "متعارض — الحالي: {current}",
+    en: "conflicts — currently: {current}",
+  },
+  "glossary.addSelected": { ar: "إضافة {n} مصطلح", en: "Add {n} terms" },
+  "glossary.selectAll": { ar: "تحديد الكل", en: "Select all" },
+  "glossary.selectNone": { ar: "إلغاء التحديد", en: "Clear" },
+  "glossary.added": {
+    ar: "أُضيف {added} · حُدِّث {updated} · تُخطّي {skipped}",
+    en: "{added} added · {updated} updated · {skipped} skipped",
+  },
+  "glossary.times": { ar: "×{n}", en: "×{n}" },
+  "glossary.alternatives": {
+    ar: "ترجمة منافسة — اختر واحدة بس",
+    en: "competing rendering — pick one only",
+  },
   "glossary.empty": {
     ar: "لا توجد مصطلحات بعد. المصطلحات المضافة هنا تُطبَّق على كل المشاريع في نفس المجال.",
     en: "No terms yet. Terms added here apply to every project in the same domain.",

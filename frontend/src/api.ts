@@ -215,6 +215,27 @@ export interface CostReport {
   };
 }
 
+export interface TermCandidate {
+  source_term: string;
+  target_term: string;
+  frequency: number;
+  sample: string;
+  note: string;
+  /** موجود بالفعل في القاعدة بنفس الترجمة */
+  exists: boolean;
+  /** موجود بترجمة مختلفة — ده أخطر من التكرار */
+  conflicts_with: string | null;
+  /** ترجمات منافسة لنفس المصطلح في نفس النتيجة */
+  alternatives: string[];
+}
+
+export interface Extraction {
+  candidates: TermCandidate[];
+  pairs_examined: number;
+  cost_usd: number;
+  warnings: string[];
+}
+
 export interface GlossaryTerm {
   id: string;
   source_term: string;
@@ -311,6 +332,43 @@ export const api = {
     request<GlossaryTerm[]>(`/glossary${projectId ? `?project_id=${projectId}` : ""}`),
   addTerm: (payload: Omit<GlossaryTerm, "id">) =>
     request<GlossaryTerm>("/glossary", { method: "POST", body: JSON.stringify(payload) }),
+  mineTerms: (payload: {
+    source_lang: string;
+    target_lang: string;
+    domain: string;
+    limit: number;
+  }) =>
+    request<Extraction>("/glossary/mine", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  importTerms: (domain: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<Extraction>(`/glossary/import?domain=${domain}`, {
+      method: "POST",
+      body: form,
+    });
+  },
+  extractTerms: (
+    params: { source_lang: string; target_lang: string; domain: string },
+    sourceFile: File,
+    targetFile: File
+  ) => {
+    const form = new FormData();
+    form.append("source_file", sourceFile);
+    form.append("target_file", targetFile);
+    const query = new URLSearchParams(params);
+    return request<Extraction>(`/glossary/extract?${query}`, {
+      method: "POST",
+      body: form,
+    });
+  },
+  addTermsBulk: (terms: Omit<GlossaryTerm, "id">[]) =>
+    request<{ added: number; updated: number; skipped: number }>(
+      "/glossary/bulk",
+      { method: "POST", body: JSON.stringify({ terms }) }
+    ),
   deleteTerm: (id: string) =>
     request<{ deleted: boolean }>(`/glossary/${id}`, { method: "DELETE" }),
 };

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
@@ -23,9 +23,10 @@ from app.models import (
     Project,
     Segment,
     SourceFile,
+    TMEntry,
     UsageRecord,
 )
-from app.tools.translator import jobs_handlers, pipeline, tm
+from app.tools.translator import jobs_handlers, pipeline, terms, tm
 from app.tools.translator.costing import estimate_project, rates_for
 from app.tools.translator.formats.registry import UnsupportedFormat, supported_extensions
 from app.tools.translator.langs import is_rtl, language_label
@@ -757,6 +758,221 @@ def add_term(payload: sc.GlossaryTermIn, db: Session = Depends(get_db)):
     db.add(term)
     db.commit()
     return sc.GlossaryTermOut(id=term.id, **payload.model_dump())
+
+
+def _mark_existing(
+    db: Session, candidates, domain: str, project_id: str | None
+) -> list[sc.TermCandidateOut]:
+    """تعليم المرشّحين الموجودين بالفعل أو المتعارضين مع القاعدة.
+
+    التعارض أهم من التكرار: مصطلح مصدره موجود بترجمة **مختلفة** معناه
+    إن القاعدة هتبقى فيها ترجمتين لنفس الكلمة، وده بيضيّع الاتساق
+    اللي القاعدة موجودة عشانه.
+    """
+    # المصطلحات العامة سارية على كل المشاريع، ومصطلحات المشروع بتغلبها.
+    scope = GlossaryTerm.project_id.is_(None)
+    if project_id:
+        scope = or_(scope, GlossaryTerm.project_id == project_id)
+
+    existing = db.execute(
+        select(GlossaryTerm)
+        .where(GlossaryTerm.domain == domain, scope)
+        # الأخص آخر واحد عشان يكتب فوق العام في القاموس
+        .order_by(GlossaryTerm.project_id.is_(None).desc())
+    ).scalars().all()
+    by_source: dict[str, str] = {t.source_term: t.target_term for t in existing}
+
+    # المرحلة الأولى: دمج التكرار التام داخل نفس النتيجة.
+    # الاستخراج على دفعات بيرجّع نفس الزوج من أكتر من دفعة، وعرضه
+    # مرتين مالوش أي معنى للمراجع.
+    merged: dict[tuple[str, str], sc.TermCandidateOut] = {}
+    order: list[tuple[str, str]] = []
+    for candidate in candidates:
+        key = (candidate.source_term, candidate.target_term)
+        if key in merged:
+            merged[key].frequency += candidate.frequency
+            continue
+        current = by_source.get(candidate.source_term)
+        merged[key] = sc.TermCandidateOut(
+            source_term=candidate.source_term,
+            target_term=candidate.target_term,
+            frequency=candidate.frequency,
+            sample=candidate.sample,
+            note=candidate.note,
+            exists=current == candidate.target_term,
+            conflicts_with=(
+                current if current and current != candidate.target_term else None
+            ),
+        )
+        order.append(key)
+
+    # المرحلة التانية: نفس المصطلح بترجمتين مختلفتين في **نفس** النتيجة.
+    # لو المراجع اختار الاتنين، الإضافة بتضيف الأولى وتحدّثها بالتانية،
+    # فيطلع بمصطلح واحد وهو فاكر إنه ضاف اتنين — وأي واحدة تكسب بيتحدد
+    # بترتيب عشوائي. لازم يشوف المنافسة قبل ما يختار.
+    renderings: dict[str, list[str]] = {}
+    for key in order:
+        renderings.setdefault(key[0], []).append(key[1])
+
+    for key in order:
+        source_term, target_term = key
+        others = [r for r in renderings[source_term] if r != target_term]
+        if others:
+            merged[key].alternatives = others
+
+    return [merged[key] for key in order]
+
+
+@router.post("/glossary/import", response_model=sc.ExtractionOut)
+async def import_glossary_table(
+    domain: str = "general",
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """استيراد مصطلحات من جدول CSV أو Excel بعمودين — بدون أي نداء API."""
+    name = Path(file.filename or "terms.csv").name
+    with tempfile.NamedTemporaryFile(delete=False, suffix=Path(name).suffix) as tmp:
+        temp_path = Path(tmp.name)
+        tmp.write(await file.read())
+
+    try:
+        result = terms.import_table(temp_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+    return sc.ExtractionOut(
+        candidates=_mark_existing(db, result.candidates, domain, None),
+        pairs_examined=result.pairs_examined,
+        warnings=result.warnings,
+    )
+
+
+@router.post("/glossary/mine", response_model=sc.ExtractionOut)
+def mine_glossary_from_memory(
+    payload: sc.MineRequest, db: Session = Depends(get_db)
+):
+    """استخراج المصطلحات من ذاكرة الترجمة.
+
+    أرخص مصدر: الأزواج المعتمدة موجودة عندك بالفعل، مفيش رفع ولا
+    انتظار — بس نداء واحد أو اتنين للنموذج عشان يميّز المصطلح من
+    الكلام العادي.
+    """
+    if not settings.anthropic_api_key:
+        raise HTTPException(
+            400,
+            "استخراج المصطلحات محتاج مفتاح Anthropic. "
+            "الاستيراد من جدول شغّال من غيره.",
+        )
+
+    entries = db.execute(
+        select(TMEntry)
+        .where(
+            TMEntry.source_lang == payload.source_lang,
+            TMEntry.target_lang == payload.target_lang,
+            TMEntry.domain == payload.domain,
+        )
+        .order_by(TMEntry.usage_count.desc())
+        .limit(payload.limit)
+    ).scalars().all()
+
+    if not entries:
+        return sc.ExtractionOut(
+            warnings=[
+                "الذاكرة فاضية للزوج ده. اعتمد مقاطع في شاشة المراجعة "
+                "الأول، أو استورد جدول مصطلحات."
+            ]
+        )
+
+    result = terms.extract_from_pairs(
+        [(e.source_text, e.target_text) for e in entries],
+        source_lang=payload.source_lang,
+        target_lang=payload.target_lang,
+        domain=payload.domain,
+    )
+    return sc.ExtractionOut(
+        candidates=_mark_existing(db, result.candidates, payload.domain, None),
+        pairs_examined=result.pairs_examined,
+        cost_usd=result.usage.cost_usd,
+        warnings=result.warnings,
+    )
+
+
+@router.post("/glossary/extract", response_model=sc.ExtractionOut)
+async def extract_glossary_from_pair(
+    source_lang: str = "ar",
+    target_lang: str = "en",
+    domain: str = "general",
+    source_file: UploadFile = File(...),
+    target_file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """استخراج المصطلحات من ملف وترجمته المعتمدة."""
+    if not settings.anthropic_api_key:
+        raise HTTPException(400, "الاستخراج من ملفين محتاج مفتاح Anthropic.")
+
+    saved: list[Path] = []
+    work_dir = settings.storage_dir / "work" / "terms"
+    try:
+        for upload in (source_file, target_file):
+            name = Path(upload.filename or "file").name
+            with tempfile.NamedTemporaryFile(
+                delete=False, suffix=Path(name).suffix
+            ) as tmp:
+                tmp.write(await upload.read())
+                saved.append(Path(tmp.name))
+
+        try:
+            alignment = terms.align_documents(saved[0], saved[1], work_dir)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(400, str(exc)) from exc
+
+        if not alignment.pairs:
+            return sc.ExtractionOut(warnings=alignment.warnings or ["مفيش أزواج صالحة"])
+
+        result = terms.extract_from_pairs(
+            alignment.pairs,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            domain=domain,
+        )
+        return sc.ExtractionOut(
+            candidates=_mark_existing(db, result.candidates, domain, None),
+            pairs_examined=len(alignment.pairs),
+            cost_usd=result.usage.cost_usd,
+            warnings=alignment.warnings + result.warnings,
+        )
+    finally:
+        for path in saved:
+            path.unlink(missing_ok=True)
+
+
+@router.post("/glossary/bulk")
+def add_terms_bulk(payload: sc.BulkTermsIn, db: Session = Depends(get_db)):
+    """إضافة المصطلحات اللي وافق عليها المستخدم.
+
+    الموجود بنفس الترجمة بيتخطّى، والموجود بترجمة مختلفة بيتحدّث —
+    المستخدم شاف التعارض في شاشة المراجعة قبل ما يوافق.
+    """
+    added = updated = skipped = 0
+    for item in payload.terms:
+        existing = db.execute(
+            select(GlossaryTerm).where(
+                GlossaryTerm.source_term == item.source_term,
+                GlossaryTerm.domain == item.domain,
+            )
+        ).scalar_one_or_none()
+
+        if existing is None:
+            db.add(GlossaryTerm(**item.model_dump()))
+            added += 1
+        elif existing.target_term != item.target_term:
+            existing.target_term = item.target_term
+            updated += 1
+        else:
+            skipped += 1
+
+    db.commit()
+    return {"added": added, "updated": updated, "skipped": skipped}
 
 
 @router.delete("/glossary/{term_id}")

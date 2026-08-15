@@ -139,6 +139,40 @@ class GlossaryTermOut(GlossaryTermIn):
     id: str
 
 
+class TermCandidateOut(BaseModel):
+    source_term: str
+    target_term: str
+    frequency: int = 1
+    sample: str = ""
+    note: str = ""
+    # هل الزوج ده موجود في القاعدة بالفعل؟
+    exists: bool = False
+    conflicts_with: str | None = None
+    # ترجمات تانية لنفس المصطلح ظهرت في **نفس** النتيجة.
+    # لو المستخدم اختار أكتر من واحدة، الأخيرة بتاكل اللي قبلها بصمت.
+    alternatives: list[str] = []
+
+
+class ExtractionOut(BaseModel):
+    candidates: list[TermCandidateOut] = []
+    pairs_examined: int = 0
+    cost_usd: float = 0.0
+    warnings: list[str] = []
+
+
+class MineRequest(BaseModel):
+    """استخراج من ذاكرة الترجمة."""
+
+    source_lang: str = "ar"
+    target_lang: str = "en"
+    domain: str = "general"
+    limit: int = 200
+
+
+class BulkTermsIn(BaseModel):
+    terms: list[GlossaryTermIn]
+
+
 class EstimateRequest(BaseModel):
     models: list[str] | None = None
 

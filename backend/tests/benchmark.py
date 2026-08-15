@@ -2,15 +2,28 @@
 
 بيبني ملف كبير صناعي وذاكرة ترجمة كبيرة، وبيقيس كل مرحلة على حدة.
 مفيش أي نداء API هنا.
+
+الاختبار ده بيشتغل على **قاعدة بيانات منفصلة** مؤقتة. النسخة الأولى
+منه كانت بتزرع أربع آلاف مدخل صناعي في ذاكرة الترجمة الحقيقية وتسيبهم،
+فكانوا بيطلعوا بعد كده كمطابقات تقريبية في شغل حقيقي.
 """
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+# لازم يتظبط قبل أي استيراد بيقرا الإعدادات: الإعدادات مخزّنة بـ lru_cache
+# والمحرّك بيتبني وقت استيراد app.core.db
+_BENCH_DIR = Path(tempfile.gettempdir()) / "tarjuman_benchmark"
+_BENCH_DIR.mkdir(parents=True, exist_ok=True)
+os.environ["DB_PATH"] = str(_BENCH_DIR / "benchmark.db")
+os.environ["STORAGE_DIR"] = str(_BENCH_DIR)
 
 from sqlalchemy import func, select  # noqa: E402
 
@@ -20,7 +33,7 @@ from app.tools.translator import pipeline, tm  # noqa: E402
 from app.tools.translator.costing import estimate_project  # noqa: E402
 from app.tools.translator.formats.base import text_hash  # noqa: E402
 
-BIG_DOC = Path("storage/samples/big_ar.docx")
+BIG_DOC = _BENCH_DIR / "big_ar.docx"
 SEGMENTS = 1500
 TM_ENTRIES = 4000
 
@@ -87,7 +100,16 @@ def seed_tm(db, count: int, domain: str) -> None:
 
 
 def main() -> int:
+    from app.core.config import settings
+
+    # شبكة أمان: لو التوجيه فوق اتكسر لأي سبب، الاختبار يقف قبل ما
+    # يزرع آلاف المدخلات الصناعية في ذاكرة الترجمة الحقيقية.
+    if _BENCH_DIR not in settings.db_path.parents:
+        print(f"!! قاعدة البيانات مش معزولة: {settings.db_path}")
+        return 1
+
     init_db()
+    print(f"  قاعدة معزولة: {settings.db_path}")
     print(f"=== تجهيز: {SEGMENTS} فقرة · {TM_ENTRIES} مدخل ذاكرة ===")
     build_big_docx(BIG_DOC, SEGMENTS)
     print(f"  حجم الملف: {BIG_DOC.stat().st_size / 1024:.0f} كب")
